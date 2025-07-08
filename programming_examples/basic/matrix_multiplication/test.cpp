@@ -160,19 +160,20 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    AVec[i] = i;
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
+    // BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
     // Diagonal:
-    // if(i % N == i / N) {
-    //   BVec[i] = 1.0;
-    // } else {
-    //   BVec[i] = 0.0;
-    // }
+    if(i % N == i / N) {
+      BVec[i] = 1.0;
+    } else {
+      BVec[i] = 0.0;
+    }
   }
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
 
