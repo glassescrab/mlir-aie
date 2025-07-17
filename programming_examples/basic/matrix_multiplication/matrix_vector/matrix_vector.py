@@ -1,4 +1,4 @@
-#
+    #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -6,20 +6,34 @@
 # (c) Copyright 2025 AMD Inc.
 import numpy as np
 import argparse
+from ml_dtypes import bfloat16
 
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 
+dtype_map = {
+    "bf16": bfloat16,
+    "i8": np.int8,
+    "i16": np.int16,
+    "f32": np.float32,
+    "i32": np.int32,
+}
 
-def my_matmul(dev):
-    M = 288
-    K = 288
-    m = 32
-    k = 32
+def my_matmul(
+    dev,
+    M,
+    K,
+    m,
+    k,
+    n_aie_cols,
+    dtype_in_str,
+    dtype_out_str
+): 
 
-    n_cores = 1
+    n_aie_rows = 1 # Because of memory constraints, 1 row has the best performance
+    n_cores = n_aie_rows * n_aie_cols
 
     A_sz = M * K
     B_sz = K
@@ -34,17 +48,15 @@ def my_matmul(dev):
     m_x_K = m * K
 
     # FIXME vectorized kernel is currently erroneous
-    vectorized = False
+    vectorized = True
 
-    dtype_in = np.dtype[np.int16]
-    dtype_in_str = "i16"
-    dtype_out = np.dtype[np.int32]
-    dtype_out_str = "i32"
+    dtype_in = np.dtype[dtype_map[dtype_in_str]]
+    dtype_out = np.dtype[dtype_map[dtype_out_str]]
 
     with mlir_mod_ctx() as ctx:
 
         if dev == "npu":
-            dev_ty = AIEDevice.npu1
+            dev_ty = AIEDevice.npu1_4col
         else:
             dev_ty = AIEDevice.npu2
 
@@ -63,22 +75,13 @@ def my_matmul(dev):
                 inputs=[A_ty, inB_ty, outC_ty],
             )
 
+            tiles = [
+                [tile(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)
+            ]
             # Tile declarations
-            ShimTile0 = tile(0, 0)
-            ShimTile1 = tile(1, 0)
-            ShimTile2 = tile(2, 0)
-            ShimTile3 = tile(3, 0)
-            ShimTiles = [ShimTile0, ShimTile1, ShimTile2, ShimTile3]
-            MemTile0 = tile(0, 1)
-            MemTile1 = tile(1, 1)
-            MemTile2 = tile(2, 1)
-            MemTile3 = tile(3, 1)
-            MemTiles = [MemTile0, MemTile1, MemTile2, MemTile3]
-            ComputeTile0 = tile(0, 2)
-            ComputeTile1 = tile(1, 2)
-            ComputeTile2 = tile(2, 2)
-            ComputeTile3 = tile(3, 2)
-            cores = [ComputeTile0, ComputeTile1, ComputeTile2, ComputeTile3]
+            ShimTiles = tiles[0]
+            MemTiles = tiles[1]
+            cores = tiles[2]
             memA_fifos = []
             inA_fifos = []
             outC_fifos = []
@@ -98,7 +101,7 @@ def my_matmul(dev):
                         A_ty,
                         (
                             [
-                                (k // 2 // 2, 2),
+                                (k  // 2, 2),
                                 (m, k),
                                 (2, 1),
                             ]
@@ -148,33 +151,44 @@ def my_matmul(dev):
                 np.ndarray[(C_sz,), dtype_out],
             )
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(
-                    metadata=inB_fifo,
-                    bd_id=2,
-                    mem=B,
-                    sizes=[M_div_m_div_n_cores, 1, 1, K],
-                    strides=[0, 0, 0, 1],
-                )
-                for i in range(n_cores):
-                    A_offset = i * M_div_m_div_n_cores * m * K
-                    C_offset = i * M_div_m_div_n_cores * m
+                for pingpong in [0,1]:
+                    bd_id_base = 8 * pingpong
+                    B_size3 = M_div_m_div_n_cores // 2
                     npu_dma_memcpy_nd(
-                        metadata=memA_fifos[i],
-                        bd_id=1,
-                        mem=A,
-                        offsets=[0, 0, 0, A_offset],
-                        sizes=[M_div_m_div_n_cores, K_div_k, m, k],
-                        strides=[m_x_K, k, K, 1],
-                    )
-                    npu_dma_memcpy_nd(
-                        metadata=outC_fifos[i],
-                        bd_id=0,
-                        mem=C,
-                        offsets=[0, 0, 0, C_offset],
-                        sizes=[1, 1, 1, C_sz_div_n_cores],
+                        metadata=inB_fifo,
+                        bd_id=bd_id_base,
+                        mem=B,
+                        sizes=[B_size3, 1, 1, K],
                         strides=[0, 0, 0, 1],
-                    )
+                    )                    
+                    C_pingpong_offset = pingpong * M // 2 
+                    A_pingpong_offset = pingpong * M *K //2
+                    for i in range(n_cores):
+
+                        C_offset = i * M//2//n_cores + C_pingpong_offset
+                        C_sizes = M//n_cores// 2
+                        npu_dma_memcpy_nd(
+                            metadata=outC_fifos[i],
+                            bd_id=bd_id_base + 1 ,
+                            mem=C,
+                            offsets=[0, 0, 0, C_offset],
+                            sizes=[1, 1, 1, C_sizes],
+                            strides=[0,0,0,1],
+                        )
+                        A_offset = i * M*K//2//n_cores + A_pingpong_offset
+                        A_sizes = [M//m//n_cores//2,K_div_k,m,k]
+                        A_strides = [ m_x_K,k,K,1]
+                        npu_dma_memcpy_nd(
+                            metadata=memA_fifos[i],
+                            bd_id=bd_id_base +2,
+                            mem=A,
+                            offsets=[0, 0, 0, A_offset],
+                            sizes=A_sizes,
+                            strides=A_strides,
+                        )
+                    # dma_wait(*outC_fifos)
                 dma_wait(*outC_fifos)
+                dma_wait(*outC_fifos)                   
 
     print(ctx.module)
 
@@ -184,6 +198,20 @@ if __name__ == "__main__":
         prog="AIE Matrix Vector Multiplication MLIR Design",
     )
     argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    argparser.add_argument("-M", type=int, default=256)
+    argparser.add_argument("-K", type=int, default=256)
+    argparser.add_argument("-m", type=int, default=32)
+    argparser.add_argument("-k", type=int, default=32)
+    argparser.add_argument("--dtype_in", type=str, choices=["i16", "bf16"], default="i16")
+    argparser.add_argument("--dtype_out", type=str, choices=["i32", "bf16", "f32"], default="i32")
+    argparser.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
     args, _ = argparser.parse_known_args()  # <- ignore the rest args in makefile-common
     dev = args.dev
-    my_matmul(dev)
+    M = args.M
+    K = args.K
+    m = args.m
+    k = args.k
+    dtype_in_str = args.dtype_in
+    dtype_out_str = args.dtype_out
+    n_aie_cols = args.n_aie_cols
+    my_matmul(dev, M, K, m, k, n_aie_cols, dtype_in_str, dtype_out_str)

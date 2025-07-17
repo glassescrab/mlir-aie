@@ -146,7 +146,8 @@ extern "C" {
 #endif
 
 #define combos(X)                                                              \
-  /* X(bfloat16, bf16, float, f32, accfloat) */                                \
+  X(bfloat16, bf16, bfloat16, bf16, accfloat)                                  \
+  X(bfloat16, bf16, float, f32, accfloat)                                      \
   X(int16, i16, int32, i32, acc32)
 
 #define matvec_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
