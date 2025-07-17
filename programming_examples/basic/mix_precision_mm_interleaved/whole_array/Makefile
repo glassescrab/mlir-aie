@@ -7,11 +7,10 @@
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
-
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-subdir=single_core
-targetname=single_core
-kernels=mm
+subdir=whole_array
+targetname=whole_array
+
 
 # M, K, N: final GEMM dimensions
 M?=512
@@ -23,12 +22,13 @@ m?=32
 k?=32
 n?=32
 
+n_aie_cols?=4
 b_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --b-col-maj ${b_col_maj}
+aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
-target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
+target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
 use_placed?=0
 use_iron?=0
 

@@ -3,44 +3,25 @@
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
+# 
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
-srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-subdir=single_core
-targetname=single_core
-kernels=mm
+subdir=matrix_vector
+targetname=matrix_vector
 
-# M, K, N: final GEMM dimensions
-M?=512
-K?=512
-N?=512
+# Currently does not accept reconfiguring size via these variables; must change
+# in source at <targetname>.py as well as here
+M=288
+K=288
+N=1
+m=32
+k=32
 
-# m, k, n: single AIE core GEMM dimensions
-m?=32
-k?=32
-n?=32
-
-b_col_maj?=0
-
-kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n --b-col-maj ${b_col_maj}
-runargs+=--b_col_maj ${b_col_maj}
-target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
+kernels=mv_${m}x${k}
 use_placed?=0
 use_iron?=0
-
-# set this flag to 1 for linear buffer allocation
-# else, 0 for bank-aware
-use_linear_buf_alloc?=1
-
-ifeq (${use_linear_buf_alloc}, 1)
-buffer_aloc_flag=basic-sequential
-else
-buffer_aloc_flag=bank-aware
-endif
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
@@ -53,13 +34,19 @@ ifeq (${use_iron}, 1)
 aie_py_src=${targetname}_iron.py
 endif
 
-KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+KERNEL_DEFINES=-DDIM_M=${m} -DDIM_K=${k}
 ifeq (${b_col_maj}, 1)
 	KERNEL_DEFINES+=-DB_COL_MAJ
 endif
 
-include ${srcdir}/../makefile-common
+SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+include ${SELF_DIR}../makefile-common
 
-build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
+# Overwrite the kernels_dir defined in makefile-common for this example; on 
+# AIE2p, we will also use the AIE2 kernel -- there is no specialized Strix 
+# variant.
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+
+build/mv_${m}x${k}.o: ${kernels_dir}/mv.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}

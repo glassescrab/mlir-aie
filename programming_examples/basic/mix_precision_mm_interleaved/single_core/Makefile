@@ -11,7 +11,7 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core
 targetname=single_core
-kernels=mm
+kernels=mix
 
 # M, K, N: final GEMM dimensions
 M?=512
@@ -25,7 +25,7 @@ n?=32
 
 b_col_maj?=0
 
-kernels=mm_${m}x${k}x${n}
+kernels=mix_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n --b-col-maj ${b_col_maj}
 runargs+=--b_col_maj ${b_col_maj}
 target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
@@ -60,6 +60,6 @@ endif
 
 include ${srcdir}/../makefile-common
 
-build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
+build/mix_${m}x${k}x${n}.o: ${kernels_dir}/mix_interleaved.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}

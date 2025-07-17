@@ -89,16 +89,20 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
           const T_in_A *__restrict pA2 = pA + ((z + 1) * colA) * MMUL::size_A;
           const T_in_B *__restrict pB1;
           const T_in_B *__restrict pB2;
-          //TODO: deal with pQ
-          // const T_in_A *__restrict pQ1 = pQ;
-          // const T_in_A *__restrict pQ2 = pQ;
+          const T_in_B *__restrict pBs_b;
+          const T_in_A *__restrict pBs;
 
           if constexpr (b_row_maj) {
             pB1 = pB + (j) * MMUL::size_B;
             pB2 = pB + (j + 1) * MMUL::size_B;
+            pBs_b = pB + colA * colB * MMUL::size_B;
+            // pBs =  *(reinterpret_cast<T_in_A*>(pB + rowA * colB * MMUL::size_B));
+
           } else {
             pB1 = pB + (j * colA) * MMUL::size_B;
             pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
+            pBs_b = pB + colA * colB * MMUL::size_B; //can be wrong, b_col_maj not supported yet
+            // pBs =  *(reinterpret_cast<T_in_A*>(pB + rowA * colB * MMUL::size_B));
           }
           aie::vector<T_in_A, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
           pA1 += MMUL::size_A;
@@ -108,6 +112,10 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
           aie::vector<T_in_A, MMUL::size_B> B1;
           aie::vector<T_in_B, MMUL::size_B> B0_int;
           aie::vector<T_in_B, MMUL::size_B> B1_int;
+          aie::vector<T_in_B, 16> Bs_row;
+          aie::vector<T_in_A, 8> Bs_row_cast;
+          aie::vector<T_in_A, MMUL::size_B> Bs;
+
           if constexpr (b_row_maj) {
             B0_int = aie::load_v<MMUL::size_B>(pB1);
             pB1 += MMUL::size_B * colB;
@@ -120,8 +128,14 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
             pB2 += MMUL::size_B;
           }
 
-          // aie::vector<T_in_A, s> Q0 = aie::load_v<s>(pQ1);
-          // aie::vector<T_in_A, s> Q1 = aie::load_v<s>(pQ2);
+          // Bs_row = aie::broadcast<T_in_A, s>(1);
+          // pBs = (T_in_A *)pBs_b;
+          Bs_row = aie::load_v<16>(pBs_b);
+          pBs_b += 16;
+          Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
+          // T_in_A factor = *(reinterpret_cast<T_in_A*>(*pBs));
+          // Bs = aie::broadcast<T_in_A, MMUL::size_B>(Bs_row_cast[1]);
+          Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
 
           // Load partial results from C buffer for accumulation in-place. The
           // zero.cc function handles the zeroing of data when a new
@@ -144,11 +158,12 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
           // aie::vector<T_in_A, MMUL::size_B> Q1_B = aie::transpose(aie::broadcast<T_in_A, MMUL::size_B>(Q1), t, s);
           // B0 = aie::div(aie::to_float(B0_int), Q0);
           // B1 = aie::div(aie::to_float(B0_int), Q1);
-          aie::vector<T_in_A, MMUL::size_B> factor = aie::broadcast<T_in_A, MMUL::size_B>(1);
+          // aie::vector<T_in_A, MMUL::size_B> factor = aie::broadcast<T_in_A, MMUL::size_B>(0.5);
+
           B0 = aie::to_float<T_in_A>(B0_int);
           B1 = aie::to_float<T_in_A>(B1_int);
-          auto B0_acc = aie::div(B0, factor);
-          auto B1_acc = aie::div(B1, factor);
+          auto B0_acc = aie::mul(B0, Bs);
+          auto B1_acc = aie::mul(B1, Bs);
 
           B0 = aie::to_vector<T_in_A>(B0_acc);
           B1 = aie::to_vector<T_in_A>(B1_acc);
@@ -179,13 +194,23 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
                 B1_int = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
                 pB2 += MMUL::size_B;
               }
+
+              // Bs_row = aie::broadcast<T_in_A, s>(1);
+              // pBs = (T_in_A *)pBs_b;
+              Bs_row = aie::load_v<16>(pBs_b);
+              pBs_b += 16;
+              Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
+              // T_in_A factor = *(reinterpret_cast<T_in_A*>(*pBs));
+              // Bs = aie::broadcast<T_in_A, MMUL::size_B>(Bs_row_cast[1]);
+              Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
+
               // Q0 = aie::load_v<s>(pQ1);
               // Q1 = aie::load_v<s>(pQ2);
-              aie::vector<T_in_A, MMUL::size_B> factor = aie::broadcast<T_in_A, MMUL::size_B>(1);
+              aie::vector<T_in_A, MMUL::size_B> factor = aie::broadcast<T_in_A, MMUL::size_B>(0.5);
               B0 = aie::to_float<T_in_A>(B0_int);
               B1 = aie::to_float<T_in_A>(B1_int);
-              auto B0_acc = aie::div(B0, factor);
-              auto B1_acc = aie::div(B1, factor);
+              B0_acc = aie::mul(B0, Bs);
+              B1_acc = aie::mul(B1, Bs);
 
               B0 = aie::to_vector<T_in_A>(B0_acc);
               B1 = aie::to_vector<T_in_A>(B1_acc);
