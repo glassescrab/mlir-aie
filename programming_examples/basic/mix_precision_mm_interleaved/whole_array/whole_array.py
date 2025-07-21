@@ -57,13 +57,16 @@ def main():
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     argparser.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
     argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
+        "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="bf16"
+    )
+    argparser.add_argument(
+        "--dtype_in_B", type=str, choices=["i8"], default="i8"
     )
     argparser.add_argument(
         "--dtype_out",
         type=str,
         choices=["bf16", "i8", "i16", "f32", "i32"],
-        default="i16",
+        default="bf16",
     )
     argparser.add_argument("--trace_size", type=int, default=0)
     argparser.add_argument(
@@ -84,6 +87,7 @@ def main():
             args.n,
             args.n_aie_cols,
             args.dtype_in,
+            args.dtype_in_B,
             args.dtype_out,
             args.b_col_maj,
             args.emulate_bf16_mmul_with_bfp16,
@@ -111,6 +115,7 @@ def my_matmul(
     n,
     n_aie_cols,
     dtype_in_str,
+    dtype_in_B_str,
     dtype_out_str,
     b_col_maj,
     emulate_bf16_mmul_with_bfp16,
@@ -121,6 +126,7 @@ def my_matmul(
     n_aie_cores = n_aie_rows * n_aie_cols
 
     dtype_in = dtype_map[dtype_in_str]
+    dtype_in_B = dtype_map[dtype_in_B_str]
     dtype_out = dtype_map[dtype_out_str]
 
     assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
@@ -211,10 +217,10 @@ def my_matmul(
     @device(dev_ty)
     def device_body():
         A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
-        B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
+        B_l2_ty = np.ndarray[(k * (n + 2),), np.dtype[dtype_in_B]]
         C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
         A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-        B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+        B_l1_ty = np.ndarray[(k, n + 2), np.dtype[dtype_in_B]]
         C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
         # AIE Core Function declarations
@@ -314,21 +320,22 @@ def my_matmul(
                 ],  # broadcast along one column
                 fifo_depth,
                 B_l1_ty,
-                (
-                    [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                    if not b_col_maj
-                    else [
-                        (n // t, t * k),
-                        (k // s, s),
-                        (t, k),
-                        (s, 1),
-                    ]
-                ),
+                [],
+                # (
+                #     [
+                #         (k // s, s * n),
+                #         (n // t, t),
+                #         (s, n),
+                #         (t, 1),
+                #     ]
+                #     if not b_col_maj
+                #     else [
+                #         (n // t, t * k),
+                #         (k // s, s),
+                #         (t, k),
+                #         (s, 1),
+                #     ]
+                # ),
             )
             # B_l3_l2 and B_l2_l1 object FIFO linking
             object_fifo_link(B_l3l2_fifos[col], B_l2l1_fifos[col])
@@ -378,7 +385,7 @@ def my_matmul(
                 # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
                 # Stack usage can be checked as explained here:
                 # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
+                @core(core_tiles[row][col], f"mix_{m}x{k}x{n}.o", stack_size=0xD00)
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (
@@ -408,7 +415,7 @@ def my_matmul(
         # To/from AIE-array data movement
         @runtime_sequence(
             np.ndarray[(M * K,), np.dtype[dtype_in]],
-            np.ndarray[(K * N,), np.dtype[dtype_in]],
+            np.ndarray[(K * N + K * N // n * 2,), np.dtype[dtype_in_B]],
             np.ndarray[(M * N,), np.dtype[dtype_out]],
         )
         def sequence(A, B, C):
@@ -551,14 +558,17 @@ def my_matmul(
                             #     |0011    0011    |
                             #     |0011    0011    |
                             #      ----------------
-                            B_col_offset = col * n if not b_col_maj else col * n * K
-                            if not b_col_maj:
-                                B_sizes = [N // n // n_aie_cols, K // k, k, n]
-                                B_strides = [n * n_aie_cols, k * N, N, 1]
-                            else:
-                                B_sizes = [N // n // n_aie_cols, K // k, n, k]
-                                B_strides = [n * n_aie_cols * K, k, K, 1]
-
+                            new_n = n + 2
+                            B_col_offset = col * K * new_n
+                            #  if not b_col_maj else col * n * K
+                            # if not b_col_maj:
+                            #     B_sizes = [N // n // n_aie_cols, K // k, k, n]
+                            #     B_strides = [n * n_aie_cols, k * N, N, 1]
+                            # else:
+                            #     B_sizes = [N // n // n_aie_cols, K // k, n, k]
+                            #     B_strides = [n * n_aie_cols * K, k, K, 1]
+                            B_sizes = [N // n // n_aie_cols, K // k, new_n, k]
+                            B_strides = [K * new_n * n_aie_cols, k * new_n, k, 1]
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col],
                                 bd_id=bd_id_base + 2 * tile_row + 2,
@@ -573,7 +583,7 @@ def my_matmul(
                             if generate_taps:
                                 B_taps.append(
                                     TensorAccessPattern(
-                                        (K, N),
+                                        (K, N + N // n * 2),
                                         offset=B_col_offset,
                                         sizes=B_sizes,
                                         strides=B_strides,

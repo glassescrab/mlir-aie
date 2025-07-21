@@ -165,7 +165,13 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
     AVec[i] = matmul_common::get_random<A_DATATYPE>();
-    // AVec[i] = 0.5;
+    // if (i < A_VOLUME / 2) {
+    //   // Use 1 for the first half of the matrix
+    //   AVec[i] = 4; // Use 1 for even indices
+    // } else {
+    //   // Use 2 for the second half of the matrix
+    //   AVec[i] = 8; // Use 1 for odd indices
+    // }
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   
@@ -178,13 +184,20 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> BFactor_ref(K); // Keep original factors for reference
 
   for (int i = 0; i < B_VOLUME; i++) {
-    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
-    BVec_ref[i] = 1;
+    // BVec_ref[i] = matmul_common::get_random<B_DATATYPE>();
+    // BVec_ref[i] = 8;
+    // BVec_ref[i] = matmul_common::get_random<A_DATATYPE>();
+    if (i < B_VOLUME / 2) {
+      // Use 1 for the first half of the matrix
+      BVec_ref[i] = 1; // Use 1 for even indices
+    } else {
+      // Use 2 for the second half of the matrix
+      BVec_ref[i] = 2; // Use 1 for odd indices
+    }
   }
 
   for (int i = 0; i < K; i++) {
-    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
-    if (i >= 16) {
+    if (i < K / 2) {
       if (i % 2 == 0)
         BFactor_ref[i] = 1; // Use 1 for even indices
       else
@@ -203,9 +216,10 @@ int main(int argc, const char *argv[]) {
   // Use char* for mixed data type handling
   char* BVec_bytes = reinterpret_cast<char*>(BVec.data());
 
-  for (int large_tile_row = 0; large_tile_row < K / LARGE_TILE_SIZE; large_tile_row++) {
-    for (int large_tile_col = 0; large_tile_col < N / LARGE_TILE_SIZE; large_tile_col++) {
-      int large_tile_index = large_tile_row * (N / LARGE_TILE_SIZE) + large_tile_col;
+  // Change to column-major ordering of large tiles
+  for (int large_tile_col = 0; large_tile_col < N / LARGE_TILE_SIZE; large_tile_col++) {
+    for (int large_tile_row = 0; large_tile_row < K / LARGE_TILE_SIZE; large_tile_row++) {
+      int large_tile_index = large_tile_col * (K / LARGE_TILE_SIZE) + large_tile_row; // Column-major indexing
       // Calculate byte offset for mixed data layout
       int large_tile_offset_bytes = large_tile_index * (LARGE_TILE_SIZE * LARGE_TILE_SIZE * sizeof(B_DATATYPE) + LARGE_TILE_SIZE * sizeof(std::bfloat16_t));
       
@@ -302,9 +316,10 @@ int main(int argc, const char *argv[]) {
   bvec_structured_csv << "# Each large tile: " << LARGE_TILE_SIZE*LARGE_TILE_SIZE << " weights + " << LARGE_TILE_SIZE << " scale factors\n";
   bvec_structured_csv << "# Format: tile_type,large_tile_idx,small_tile_idx,element_idx,value\n";
   
-  for (int large_tile_row = 0; large_tile_row < K / LARGE_TILE_SIZE; large_tile_row++) {
-    for (int large_tile_col = 0; large_tile_col < N / LARGE_TILE_SIZE; large_tile_col++) {
-      int large_tile_index = large_tile_row * (N / LARGE_TILE_SIZE) + large_tile_col;
+  // Change to column-major ordering of large tiles for CSV output
+  for (int large_tile_col = 0; large_tile_col < N / LARGE_TILE_SIZE; large_tile_col++) {
+    for (int large_tile_row = 0; large_tile_row < K / LARGE_TILE_SIZE; large_tile_row++) {
+      int large_tile_index = large_tile_col * (K / LARGE_TILE_SIZE) + large_tile_row; // Column-major indexing
       int large_tile_offset_bytes = large_tile_index * (LARGE_TILE_SIZE * LARGE_TILE_SIZE * sizeof(B_DATATYPE) + LARGE_TILE_SIZE * sizeof(std::bfloat16_t));
       
       bvec_structured_csv << "# Large Tile " << large_tile_index << " (row=" << large_tile_row << ", col=" << large_tile_col << ")\n";
