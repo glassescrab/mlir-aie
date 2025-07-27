@@ -77,6 +77,11 @@ int main(int argc, const char *argv[]) {
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
+
+  int m = 64;
+  int k = 64;
+  int n = 64;
+
   bool do_verify_stochastic =
       (long long)M * N * K > verify_stochastic_threshold;
 
@@ -90,7 +95,7 @@ int main(int argc, const char *argv[]) {
 
   size_t A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
   // B matrix: K int8 weights + 1 bfloat16 scale per row
-  size_t B_SIZE = (B_VOLUME * sizeof(B_DATATYPE)) + K * N / 32 * sizeof(std::bfloat16_t);
+  size_t B_SIZE = (B_VOLUME * sizeof(B_DATATYPE)) + K * N / n * sizeof(std::bfloat16_t);
   size_t C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
   std::vector<uint32_t> instr_v =
@@ -179,7 +184,7 @@ int main(int argc, const char *argv[]) {
   char *bufB = bo_b.map<char *>();
   
   // size_t bytes_per_row = K * sizeof(B_DATATYPE) + sizeof(std::bfloat16_t);
-  std::vector<B_DATATYPE> BVec(B_VOLUME + K * N / 32 * 2); // Mixed data type storage
+  std::vector<B_DATATYPE> BVec(B_VOLUME + K * N / n * 2); // Mixed data type storage
   std::vector<A_DATATYPE> BVec_ref(B_VOLUME); // Keep original weights for reference
   std::vector<A_DATATYPE> BFactor_ref(K); // Keep original factors for reference
 
@@ -210,7 +215,7 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  constexpr int LARGE_TILE_SIZE = 32;
+  constexpr int LARGE_TILE_SIZE = 64;
   constexpr int SMALL_TILE_SIZE = 8;
 
   // Use char* for mixed data type handling
@@ -428,32 +433,32 @@ int main(int argc, const char *argv[]) {
     }
     C_DATATYPE *bufC = bo_out.map<C_DATATYPE *>();
     
-    std::ofstream outfile("result.txt");
-    outfile << "C = \n";
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        outfile << bufC[i * N + j] << " ";
-      }
-      outfile << std::endl;
-    }
-    outfile.close();
+    // std::ofstream outfile("result.txt");
+    // outfile << "C = \n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     outfile << bufC[i * N + j] << " ";
+    //   }
+    //   outfile << std::endl;
+    // }
+    // outfile.close();
 
-    // Save output matrix to CSV file
-    std::ofstream csv_outfile("result.csv");
-    csv_outfile << "# Output Matrix C: " << M << " rows x " << N << " columns\n";
-    csv_outfile << "# Format: comma-separated values\n";
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        csv_outfile << static_cast<float>(bufC[i * N + j]);
-        if (j < N - 1) csv_outfile << ",";
-      }
-      csv_outfile << "\n";
-    }
-    csv_outfile.close();
+    // // Save output matrix to CSV file
+    // std::ofstream csv_outfile("result.csv");
+    // csv_outfile << "# Output Matrix C: " << M << " rows x " << N << " columns\n";
+    // csv_outfile << "# Format: comma-separated values\n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     csv_outfile << static_cast<float>(bufC[i * N + j]);
+    //     if (j < N - 1) csv_outfile << ",";
+    //   }
+    //   csv_outfile << "\n";
+    // }
+    // csv_outfile.close();
 
-    if (verbosity >= 1) {
-      std::cout << "Output matrix saved to result.txt and result.csv\n";
-    }
+    // if (verbosity >= 1) {
+    //   std::cout << "Output matrix saved to result.txt and result.csv\n";
+    // }
 
     if (do_verify) {
       memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));

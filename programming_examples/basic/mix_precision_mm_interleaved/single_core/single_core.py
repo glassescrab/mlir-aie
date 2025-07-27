@@ -36,7 +36,7 @@ def main():
     argparser.add_argument("-N", type=int, default=256)
     argparser.add_argument("-m", type=int, default=64)
     argparser.add_argument("-k", type=int, default=64)
-    argparser.add_argument("-n", type=int, default=32)
+    argparser.add_argument("-n", type=int, default=64)
     argparser.add_argument(
         "--dtype_in", type=str, choices=["bf16"], default="bf16"
     )
@@ -339,14 +339,13 @@ def my_matmul(
                                 sizes=[N // n, K // k, m, k],
                                 strides=[0, k, K, 1],
                             )
-
-                            # if not b_col_maj:
-                            #     B_sizes = [N // n, K // k, k, n]
-                            #     B_strides = [K * n, k * n, n, 1]
-                            # else:
-                            #     B_sizes = [N // n, K // k, n, k]
-                            #     B_strides = [n * K, k, K, 1]
                             new_n = n + 2
+                            # if not b_col_maj:
+                            #     B_sizes = [N // n, K // k, k, n + 4]
+                            #     B_strides = [n, k * N, N, 1]
+                            # else:
+                            #     B_sizes = [N // n, K // k, new_n, k]
+                            #     B_strides = [n * K, k, K, 1]
                             B_sizes = [N // n, K // k, new_n, k]
                             B_strides = [K * new_n, k * new_n, k, 1]
 

@@ -348,6 +348,7 @@ def my_matmul(
                                 sizes=[N // n, K // k, m, k],
                                 strides=[0, k, K, 1],
                             )
+                            # new_n = n + 2
 
                             if not b_col_maj:
                                 B_sizes = [N // n, K // k, k, n]
@@ -355,7 +356,8 @@ def my_matmul(
                             else:
                                 B_sizes = [N // n, K // k, n, k]
                                 B_strides = [n * K, k, K, 1]
-
+                            # B_sizes = [N // n, K // k, n, k]
+                            # B_strides = [K * n, k * n, k, 1]
                             npu_dma_memcpy_nd(
                                 metadata=inB,
                                 bd_id=bd_id_base + 2 * tile_row + 2,

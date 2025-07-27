@@ -37,7 +37,7 @@ include ${current_dir}../../makefile-common
 dtype_in?=bf16
 dtype_out?=bf16
 trace_size?=65536
-emulate_bfloat16_mmul_with_bfp16?=0
+emulate_bfloat16_mmul_with_bfp16?=1
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
@@ -80,10 +80,10 @@ trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
-runargs?=-v 2 --warmup 1 --iters 1
+runargs+=-v 2 --warmup 16 --iters 32
 aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
-use_chess?=0
+use_chess?=1
 
 # default sequential buffer allocation, if not already defined
 buffer_aloc_flag?=basic-sequential

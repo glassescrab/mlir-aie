@@ -83,7 +83,7 @@ trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
-runargs?=-v 2 --warmup 1 --iters 1
+runargs+= -v 2 --warmup 16 --iters 32
 aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_in_B ${dtype_in_B} --dtype_out ${dtype_out}
 
 use_chess?=1
@@ -113,7 +113,7 @@ endif
 # Instruction memory and compilation time increases in this case.
 # Set to 0 otherwise.
 # Only affects kernel compilation using chess.
-opt_perf?=0
+opt_perf?=1
 
 # KERNEL_CC defines the C compiler used to compile the kernel.
 # KERNEL_CFLAGS holds the flags passed to that compiler.
