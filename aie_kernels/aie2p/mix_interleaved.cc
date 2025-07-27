@@ -150,7 +150,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
           pBs_b += 16;
           Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
           
-          Bs = aie::broadcast<T_in_A, MMUL::size_B>(1);
+          // Bs = aie::broadcast<T_in_A, MMUL::size_B>(1);
           Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
 
           B0_raw = aie::to_float<T_in_A>(B0_int);
@@ -196,7 +196,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
               pBs_b += 16;
               Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
               
-              Bs = aie::broadcast<T_in_A, MMUL::size_B>(1);
+              // Bs = aie::broadcast<T_in_A, MMUL::size_B>(1);
               Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
 
               B0_raw = aie::to_float<T_in_A>(B0_int);
