@@ -81,7 +81,7 @@ int main(int argc, const char *argv[]) {
   int m = 64;
   int k = 64;
   int n = 64;
-  int group_size = n;
+  int group_size = 64; // Fixed group size for int4 quantization
 
   bool do_verify_stochastic =
       (long long)M * N * K > verify_stochastic_threshold;
@@ -91,12 +91,14 @@ int main(int argc, const char *argv[]) {
   }
 
   int A_VOLUME = M * K;
-  int B_VOLUME = N * K;  // Will be updated later for quantized layout
+  int B_VOLUME = N * K;
   int C_VOLUME = M * N;
 
   size_t A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
-  // B matrix: K int8 weights + 1 bfloat16 scale per row
-  size_t B_SIZE = (B_VOLUME * sizeof(B_DATATYPE)) + K * N / n * sizeof(std::bfloat16_t);
+  // B matrix: hierarchical tiling with int4 weights + bf16 scales + int8 zeros (repeated)
+  // Each 64x64 large tile contains: 64x32 bytes (int4 weights) + 128 bytes (bf16 scales) + 128 bytes (int8 zeros repeated) = 2304 bytes
+  int num_large_tiles = (K / 64) * (N / 64);
+  size_t B_SIZE = num_large_tiles * (64 * 32 + 64 * 2 + 64 * 2); // 2304 bytes per large tile
   size_t C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
   std::vector<uint32_t> instr_v =
@@ -181,96 +183,181 @@ int main(int argc, const char *argv[]) {
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   
-  // Map B buffer as char* since it contains mixed data types (int8 + bfloat16)
+  // Map B buffer as char* since it contains mixed data types (int4 + bfloat16 + int8)
   char *bufB = bo_b.map<char *>();
   
   // size_t bytes_per_row = K * sizeof(B_DATATYPE) + sizeof(std::bfloat16_t);
-  std::vector<B_DATATYPE> BVec(B_VOLUME + K * N / n * 2); // Mixed data type storage
-  std::vector<A_DATATYPE> BVec_ref(B_VOLUME); // Keep original weights for reference
-  std::vector<A_DATATYPE> BFactor_ref(K); // Keep original factors for reference
-  std::vector<A_DATATYPE> Bzeropoint_ref(K); // Keep original factors for reference
+  std::vector<int8_t> BVec(B_SIZE); // Allocate exact size for packed data
+  std::vector<std::bfloat16_t> BVec_ref(B_VOLUME); // Keep original weights for reference
+  std::vector<std::bfloat16_t> BFactor_ref(B_VOLUME / group_size); // Keep original factors for reference
+  std::vector<int8_t> Bzeropoint_ref(B_VOLUME / group_size); // Keep original factors for reference
 
   for (int i = 0; i < B_VOLUME; i++) {
     // BVec_ref[i] = matmul_common::get_random<B_DATATYPE>();
-    // BVec_ref[i] = 8;
+    // BVec_ref[i] = 2;
     // BVec_ref[i] = matmul_common::get_random<A_DATATYPE>();
+    // if (i < 1000) {
+    //   // Use 1 for the first half of the matrix
+    //   BVec_ref[i] = 1; // Use 1 for even indices
+    // } else {
+    //   // Use 2 for the second half of the matrix
+    //   BVec_ref[i] = -1; // Use -1 for odd indices
+    // }
     if (i < B_VOLUME / 2) {
       // Use 1 for the first half of the matrix
       BVec_ref[i] = 1; // Use 1 for even indices
     } else {
       // Use 2 for the second half of the matrix
-      BVec_ref[i] = 2; // Use 1 for odd indices
+      BVec_ref[i] = 1; // Use 1 for odd indices
     }
   }
 
-  for (int i = 0; i < K; i++) {
-    if (i < K / 2) {
+  for (int i = 0; i < B_VOLUME / group_size; i++) {
+    // BFactor_ref[i] = 1.0f; // Use 1 for all groups
+    if (i < B_VOLUME / group_size / 2) {
       if (i % 2 == 0)
         BFactor_ref[i] = 1; // Use 1 for even indices
       else
         BFactor_ref[i] = 0.5; // Use 0.5 for odd indices
     } else {
       if (i % 2 == 0)
-        BFactor_ref[i] = 0.25; // Use 0.25 for even indices
+        BFactor_ref[i] = -1; // Use -1 for even indices
       else
-        BFactor_ref[i] = 0.125; // Use 0.125 for odd indices
+        BFactor_ref[i] = -0.5; // Use -0.5 for odd indices
     }
   }
 
+  for (int i = 0; i < B_VOLUME / group_size; i++) {
+    // Bzeropoint_ref[i] = 0;
+    if (i < B_VOLUME / group_size / 2) {
+      if (i % 2 == 0)
+        Bzeropoint_ref[i] = 1; // Use 1 for even indices
+      else
+        Bzeropoint_ref[i] = -1; // Use -1 for odd indices
+    } else {
+      if (i % 2 == 0)
+        Bzeropoint_ref[i] = 2; // Use 2 for even indices
+      else
+        Bzeropoint_ref[i] = -2; // Use -2 for odd indices
+    }
+  }
   constexpr int LARGE_TILE_SIZE = 64;
   constexpr int SMALL_TILE_SIZE = 8;
 
-  // Use char* for mixed data type handling
-  char* BVec_bytes = reinterpret_cast<char*>(BVec.data());
+  // Helper function to quantize weight to int4 using the correct formula
+  auto quantize_to_int4 = [](float weight, float scale, int8_t zero_point) -> int8_t {
+    // Quantization formula: quantized = (weight / scale) + zero_point
+    float quantized = (weight / scale) + zero_point;
+    // Clamp to signed int4 range [-8, 7]
+    int quantized_int = std::max(-8, std::min(7, static_cast<int>(std::round(quantized))));
+    // Return as signed int4 value
+    return static_cast<int8_t>(quantized_int);
+  };
 
-  // Change to column-major ordering of large tiles
+  // Pack int4 weights into the BVec buffer with column-major large tile ordering
+  char* BVec_bytes = reinterpret_cast<char*>(BVec.data());
+  
   for (int large_tile_col = 0; large_tile_col < N / LARGE_TILE_SIZE; large_tile_col++) {
     for (int large_tile_row = 0; large_tile_row < K / LARGE_TILE_SIZE; large_tile_row++) {
       int large_tile_index = large_tile_col * (K / LARGE_TILE_SIZE) + large_tile_row; // Column-major indexing
-      // Calculate byte offset for mixed data layout
-      int large_tile_offset_bytes = large_tile_index * (LARGE_TILE_SIZE * LARGE_TILE_SIZE * sizeof(B_DATATYPE) + LARGE_TILE_SIZE * sizeof(std::bfloat16_t));
       
-      // Store weight data in small tiles
+      // Calculate byte offset for this large tile (2304 bytes per tile)
+      size_t large_tile_offset = large_tile_index * (64 * 32 + 64 * 2 + 64 * 2);
+      
+      // Pack int4 weights (64x64 weights -> 64x32 bytes, 2 weights per byte)
       for (int small_tile_row = 0; small_tile_row < LARGE_TILE_SIZE / SMALL_TILE_SIZE; small_tile_row++) {
         for (int small_tile_col = 0; small_tile_col < LARGE_TILE_SIZE / SMALL_TILE_SIZE; small_tile_col++) {
           int small_tile_index = small_tile_row * (LARGE_TILE_SIZE / SMALL_TILE_SIZE) + small_tile_col;
-          int small_tile_offset_bytes = small_tile_index * SMALL_TILE_SIZE * SMALL_TILE_SIZE * sizeof(B_DATATYPE);
+          size_t small_tile_offset = small_tile_index * (SMALL_TILE_SIZE * SMALL_TILE_SIZE / 2); // 32 bytes per 8x8 small tile
           
           for (int i = 0; i < SMALL_TILE_SIZE; i++) {
-            for (int j = 0; j < SMALL_TILE_SIZE; j++) {
-              int weight_offset_bytes = large_tile_offset_bytes + small_tile_offset_bytes + (i * SMALL_TILE_SIZE + j) * sizeof(B_DATATYPE);
-              int matrix_row = large_tile_row * LARGE_TILE_SIZE + small_tile_row * SMALL_TILE_SIZE + i;
-              int matrix_col = large_tile_col * LARGE_TILE_SIZE + small_tile_col * SMALL_TILE_SIZE + j;
+            for (int j = 0; j < SMALL_TILE_SIZE; j += 2) { // Process 2 weights per byte
+              int matrix_row1 = large_tile_row * LARGE_TILE_SIZE + small_tile_row * SMALL_TILE_SIZE + i;
+              int matrix_col1 = large_tile_col * LARGE_TILE_SIZE + small_tile_col * SMALL_TILE_SIZE + j;
+              int matrix_row2 = matrix_row1;
+              int matrix_col2 = matrix_col1 + 1;
 
-              if (matrix_row < K && matrix_col < N) {
-                // Copy from reference matrix (K×N layout)
-                int ref_index = matrix_row * N + matrix_col;
-                B_DATATYPE* weight_ptr = reinterpret_cast<B_DATATYPE*>(BVec_bytes + weight_offset_bytes);
-                // Divide the weight by the corresponding scaling factor before storing
-                float scaled_weight = static_cast<float>(BVec_ref[ref_index]) / static_cast<float>(BFactor_ref[matrix_row]);
-                *weight_ptr = static_cast<B_DATATYPE>(scaled_weight);
+              if (matrix_row1 < K && matrix_col1 < N && matrix_col2 < N) {
+                // Calculate linear indices in the original matrix (row-major)
+                int ref_index1 = matrix_row1 * N + matrix_col1;
+                int ref_index2 = matrix_row2 * N + matrix_col2;
+                
+                // Determine which groups these elements belong to
+                int group_index1 = ref_index1 / group_size;
+                int group_index2 = ref_index2 / group_size;
+                
+                // Quantize two weights using their respective group parameters
+                int8_t weight1_q = quantize_to_int4(BVec_ref[ref_index1], BFactor_ref[group_index1], Bzeropoint_ref[group_index1]);
+                int8_t weight2_q = quantize_to_int4(BVec_ref[ref_index2], BFactor_ref[group_index2], Bzeropoint_ref[group_index2]);
+                
+                // Pack two signed 4-bit weights into one byte (weight1 in lower 4 bits, weight2 in upper 4 bits)
+                uint8_t packed_byte = (static_cast<uint8_t>(weight1_q) & 0x0F) | ((static_cast<uint8_t>(weight2_q) & 0x0F) << 4);
+                
+                size_t byte_offset = large_tile_offset + small_tile_offset + (i * SMALL_TILE_SIZE + j) / 2;
+                BVec_bytes[byte_offset] = packed_byte;
               }
             }
           }
         }
       }
       
-      // Store scale factors at the end of each large tile
+      // Store scale factors for this large tile (64 bf16 values = 128 bytes)
+      // We need to determine which scale factors are relevant for this 64x64 tile
+      size_t scale_offset = large_tile_offset + 64 * 32;
       for (int i = 0; i < LARGE_TILE_SIZE; i++) {
         int matrix_row = large_tile_row * LARGE_TILE_SIZE + i;
         if (matrix_row < K) {
-          int scale_offset_bytes = large_tile_offset_bytes + LARGE_TILE_SIZE * LARGE_TILE_SIZE * sizeof(B_DATATYPE) + i * sizeof(std::bfloat16_t);
-          std::bfloat16_t* scale_ptr = reinterpret_cast<std::bfloat16_t*>(BVec_bytes + scale_offset_bytes);
-          *scale_ptr = static_cast<std::bfloat16_t>(BFactor_ref[matrix_row]);
+          // For this row, find the scale factor for the first element in this tile
+          int start_col = large_tile_col * LARGE_TILE_SIZE;
+          int ref_index_start = matrix_row * N + start_col;
+          int group_index = ref_index_start / group_size;
+          
+          std::bfloat16_t* scale_ptr = reinterpret_cast<std::bfloat16_t*>(BVec_bytes + scale_offset + i * sizeof(std::bfloat16_t));
+          *scale_ptr = static_cast<std::bfloat16_t>(BFactor_ref[group_index]);
+        }
+      }
+      
+      // Store zero-points for this large tile (64 int8 values, grouped by 8 and repeated)
+      // 8 groups of 8 zero-points, each group repeated twice = 8 * 8 * 2 = 128 bytes
+      size_t zero_point_offset = large_tile_offset + 64 * 32 + 64 * 2;
+      
+      // Process in groups of 8 zero-points
+      for (int group = 0; group < 8; group++) {
+        // First, store the original 8 zero-points
+        for (int i = 0; i < 8; i++) {
+          int row_index = group * 8 + i;
+          if (row_index < LARGE_TILE_SIZE) {
+            int matrix_row = large_tile_row * LARGE_TILE_SIZE + row_index;
+            if (matrix_row < K) {
+              int start_col = large_tile_col * LARGE_TILE_SIZE;
+              int ref_index_start = matrix_row * N + start_col;
+              int group_index = ref_index_start / group_size;
+              
+              int8_t* zero_point_ptr = reinterpret_cast<int8_t*>(BVec_bytes + zero_point_offset + group * 16 + i);
+              *zero_point_ptr = Bzeropoint_ref[group_index];
+            }
+          }
+        }
+        
+        // Then, repeat the same 8 zero-points
+        for (int i = 0; i < 8; i++) {
+          int row_index = group * 8 + i;
+          if (row_index < LARGE_TILE_SIZE) {
+            int matrix_row = large_tile_row * LARGE_TILE_SIZE + row_index;
+            if (matrix_row < K) {
+              int start_col = large_tile_col * LARGE_TILE_SIZE;
+              int ref_index_start = matrix_row * N + start_col;
+              int group_index = ref_index_start / group_size;
+              
+              int8_t* zero_point_ptr = reinterpret_cast<int8_t*>(BVec_bytes + zero_point_offset + group * 16 + 8 + i);
+              *zero_point_ptr = Bzeropoint_ref[group_index];
+            }
+          }
         }
       }
     }
   }
   
-  // for (int i = 0; i < B_VOLUME + K * N / 32 * 2; i++) {
-  //   // AVec[i] = matmul_common::get_random<A_DATATYPE>();
-  //   BVec[i] = i;
-  // }
   // Copy the arranged data to the device buffer
   memcpy(bufB, BVec.data(), B_SIZE);
 
@@ -288,11 +375,19 @@ int main(int argc, const char *argv[]) {
 
   // Write BFactor_ref (scale factors) to CSV file
   std::ofstream bfactor_ref_csv("BFactor_ref.csv");
-  bfactor_ref_csv << "# BFactor_ref (Scale Factors): " << K << " values\n";
-  for (int i = 0; i < K; i++) {
+  bfactor_ref_csv << "# BFactor_ref (Scale Factors): " << (B_VOLUME / group_size) << " values\n";
+  for (int i = 0; i < B_VOLUME / group_size; i++) {
     bfactor_ref_csv << static_cast<float>(BFactor_ref[i]) << "\n";
   }
   bfactor_ref_csv.close();
+
+  // Write Bzeropoint_ref (zero points) to CSV file
+  std::ofstream bzeropoint_ref_csv("Bzeropoint_ref.csv");
+  bzeropoint_ref_csv << "# Bzeropoint_ref (Zero Points): " << (B_VOLUME / group_size) << " values\n";
+  for (int i = 0; i < B_VOLUME / group_size; i++) {
+    bzeropoint_ref_csv << static_cast<int>(Bzeropoint_ref[i]) << "\n";
+  }
+  bzeropoint_ref_csv.close();
 
   // Write entire BVec raw data to CSV file
   std::ofstream bvec_raw_csv("BVec_raw.csv");
@@ -307,10 +402,15 @@ int main(int argc, const char *argv[]) {
                  << static_cast<int>(static_cast<int8_t>(bvec_bytes[i])) << ",";
     
     // Add interpretation based on position
-    if (i % (LARGE_TILE_SIZE * LARGE_TILE_SIZE + LARGE_TILE_SIZE * sizeof(std::bfloat16_t)) < LARGE_TILE_SIZE * LARGE_TILE_SIZE) {
-      bvec_raw_csv << "weight";
+    size_t large_tile_size_bytes = 64 * 32 + 64 * 2 + 64 * 2; // 2304 bytes per tile
+    size_t offset_in_tile = i % large_tile_size_bytes;
+    
+    if (offset_in_tile < 64 * 32) {
+      bvec_raw_csv << "int4_weights";
+    } else if (offset_in_tile < 64 * 32 + 64 * 2) {
+      bvec_raw_csv << "scale_factor_bf16";
     } else {
-      bvec_raw_csv << "scale_factor_byte";
+      bvec_raw_csv << "zero_point_int8_repeated";
     }
     bvec_raw_csv << "\n";
   }
@@ -318,32 +418,35 @@ int main(int argc, const char *argv[]) {
 
   // Write BVec with tile structure annotations
   std::ofstream bvec_structured_csv("BVec_structured.csv");
-  bvec_structured_csv << "# BVec Structured Data (Tile Organization)\n";
+  bvec_structured_csv << "# BVec Structured Data (Int4 Tile Organization)\n";
   bvec_structured_csv << "# Large tiles: " << (K/LARGE_TILE_SIZE) * (N/LARGE_TILE_SIZE) << "\n";
-  bvec_structured_csv << "# Each large tile: " << LARGE_TILE_SIZE*LARGE_TILE_SIZE << " weights + " << LARGE_TILE_SIZE << " scale factors\n";
-  bvec_structured_csv << "# Format: tile_type,large_tile_idx,small_tile_idx,element_idx,value\n";
+  bvec_structured_csv << "# Each large tile: " << LARGE_TILE_SIZE*LARGE_TILE_SIZE/2 << " bytes (int4 weights) + " 
+                      << LARGE_TILE_SIZE*2 << " bytes (bf16 scales) + " << LARGE_TILE_SIZE*2 << " bytes (int8 zeros repeated)\n";
+  bvec_structured_csv << "# Format: tile_type,large_tile_idx,small_tile_idx,element_idx,value1,value2\n";
   
-  // Change to column-major ordering of large tiles for CSV output
   for (int large_tile_col = 0; large_tile_col < N / LARGE_TILE_SIZE; large_tile_col++) {
     for (int large_tile_row = 0; large_tile_row < K / LARGE_TILE_SIZE; large_tile_row++) {
-      int large_tile_index = large_tile_col * (K / LARGE_TILE_SIZE) + large_tile_row; // Column-major indexing
-      int large_tile_offset_bytes = large_tile_index * (LARGE_TILE_SIZE * LARGE_TILE_SIZE * sizeof(B_DATATYPE) + LARGE_TILE_SIZE * sizeof(std::bfloat16_t));
+      int large_tile_index = large_tile_col * (K / LARGE_TILE_SIZE) + large_tile_row;
+      size_t large_tile_offset = large_tile_index * (64 * 32 + 64 * 2 + 64 * 2);
       
       bvec_structured_csv << "# Large Tile " << large_tile_index << " (row=" << large_tile_row << ", col=" << large_tile_col << ")\n";
       
-      // Print weights in small tiles
+      // Print int4 weights in small tiles
       for (int small_tile_row = 0; small_tile_row < LARGE_TILE_SIZE / SMALL_TILE_SIZE; small_tile_row++) {
         for (int small_tile_col = 0; small_tile_col < LARGE_TILE_SIZE / SMALL_TILE_SIZE; small_tile_col++) {
           int small_tile_index = small_tile_row * (LARGE_TILE_SIZE / SMALL_TILE_SIZE) + small_tile_col;
-          int small_tile_offset_bytes = small_tile_index * SMALL_TILE_SIZE * SMALL_TILE_SIZE * sizeof(B_DATATYPE);
+          size_t small_tile_offset = small_tile_index * (SMALL_TILE_SIZE * SMALL_TILE_SIZE / 2);
           
           for (int i = 0; i < SMALL_TILE_SIZE; i++) {
-            for (int j = 0; j < SMALL_TILE_SIZE; j++) {
-              int weight_offset_bytes = large_tile_offset_bytes + small_tile_offset_bytes + (i * SMALL_TILE_SIZE + j) * sizeof(B_DATATYPE);
-              if (weight_offset_bytes < BVec.size()) {
-                B_DATATYPE* weight_ptr = reinterpret_cast<B_DATATYPE*>(bvec_bytes + weight_offset_bytes);
-                bvec_structured_csv << "weight," << large_tile_index << "," << small_tile_index 
-                                   << "," << (i * SMALL_TILE_SIZE + j) << "," << static_cast<int>(*weight_ptr) << "\n";
+            for (int j = 0; j < SMALL_TILE_SIZE; j += 2) {
+              size_t byte_offset = large_tile_offset + small_tile_offset + (i * SMALL_TILE_SIZE + j) / 2;
+              if (byte_offset < BVec.size()) {
+                uint8_t packed_byte = static_cast<uint8_t>(BVec_bytes[byte_offset]);
+                uint8_t weight1 = packed_byte & 0x0F;
+                uint8_t weight2 = (packed_byte >> 4) & 0x0F;
+                bvec_structured_csv << "int4_weights," << large_tile_index << "," << small_tile_index 
+                                   << "," << (i * SMALL_TILE_SIZE + j) << "," << static_cast<int>(weight1) 
+                                   << "," << static_cast<int>(weight2) << "\n";
               }
             }
           }
@@ -351,11 +454,32 @@ int main(int argc, const char *argv[]) {
       }
       
       // Print scale factors
+      size_t scale_offset = large_tile_offset + 64 * 32;
       for (int i = 0; i < LARGE_TILE_SIZE; i++) {
-        int scale_offset_bytes = large_tile_offset_bytes + LARGE_TILE_SIZE * LARGE_TILE_SIZE * sizeof(B_DATATYPE) + i * sizeof(std::bfloat16_t);
-        if (scale_offset_bytes + sizeof(std::bfloat16_t) <= BVec.size()) {
-          std::bfloat16_t* scale_ptr = reinterpret_cast<std::bfloat16_t*>(bvec_bytes + scale_offset_bytes);
-          bvec_structured_csv << "scale," << large_tile_index << ",-1," << i << "," << static_cast<float>(*scale_ptr) << "\n";
+        if (scale_offset + i * sizeof(std::bfloat16_t) + sizeof(std::bfloat16_t) <= BVec.size()) {
+          std::bfloat16_t* scale_ptr = reinterpret_cast<std::bfloat16_t*>(BVec_bytes + scale_offset + i * sizeof(std::bfloat16_t));
+          bvec_structured_csv << "scale_bf16," << large_tile_index << ",-1," << i << "," << static_cast<float>(*scale_ptr) << ",0\n";
+        }
+      }
+      
+      // Print zero-points (grouped by 8, each group repeated twice)
+      size_t zero_point_offset = large_tile_offset + 64 * 32 + 64 * 2;
+      for (int group = 0; group < 8; group++) {
+        // Print first occurrence of the 8 zero-points in this group
+        for (int i = 0; i < 8; i++) {
+          size_t offset = zero_point_offset + group * 16 + i;
+          if (offset < BVec.size()) {
+            int8_t* zero_point_ptr = reinterpret_cast<int8_t*>(BVec_bytes + offset);
+            bvec_structured_csv << "zero_point_group" << group << "_first," << large_tile_index << ",-1," << i << "," << static_cast<int>(*zero_point_ptr) << "," << group << "\n";
+          }
+        }
+        // Print second occurrence (repetition) of the same 8 zero-points
+        for (int i = 0; i < 8; i++) {
+          size_t offset = zero_point_offset + group * 16 + 8 + i;
+          if (offset < BVec.size()) {
+            int8_t* zero_point_ptr = reinterpret_cast<int8_t*>(BVec_bytes + offset);
+            bvec_structured_csv << "zero_point_group" << group << "_repeat," << large_tile_index << ",-1," << i << "," << static_cast<int>(*zero_point_ptr) << "," << group << "\n";
+          }
         }
       }
     }
@@ -366,6 +490,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Data written to CSV files:\n";
     std::cout << "  - BVec_ref.csv (original reference matrix)\n";
     std::cout << "  - BFactor_ref.csv (original scale factors)\n";
+    std::cout << "  - Bzeropoint_ref.csv (original zero points)\n";
     std::cout << "  - BVec_raw.csv (entire BVec as raw bytes)\n";
     std::cout << "  - BVec_structured.csv (BVec with tile annotations)\n";
   }

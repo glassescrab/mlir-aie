@@ -110,7 +110,7 @@ def my_matmul(
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
     A_sz = M * K
-    B_sz = K * N + K * N // n * 2
+    B_sz = K * N // 2 + K * N // n * 4  # B is interleaved int4, so we need to account for the scales and zero points
     C_sz = M * N
 
     M_div_m = M // m
@@ -130,7 +130,7 @@ def my_matmul(
         @device(dev_ty)
         def device_body():
             a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-            b_ty = np.ndarray[(k, n + 2), np.dtype[dtype_in_B]]
+            b_ty = np.ndarray[(k, n // 2 + 4), np.dtype[dtype_in_B]]
             c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
@@ -339,7 +339,7 @@ def my_matmul(
                                 sizes=[N // n, K // k, m, k],
                                 strides=[0, k, K, 1],
                             )
-                            new_n = n + 2
+                            new_n = n // 2 + 4  # B is interleaved int4, so we need to account for the scales and zero points
                             # if not b_col_maj:
                             #     B_sizes = [N // n, K // k, k, n + 4]
                             #     B_strides = [n, k * N, N, 1]

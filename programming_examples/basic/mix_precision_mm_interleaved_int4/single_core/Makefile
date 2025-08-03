@@ -60,6 +60,6 @@ endif
 
 include ${srcdir}/../makefile-common
 
-build/mix_${m}x${k}x${n}.o: ${kernels_dir}/mix_interleaved.cc
+build/mix_${m}x${k}x${n}.o: ${kernels_dir}/mix_interleaved_int4.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
