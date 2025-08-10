@@ -189,30 +189,28 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> BFactor_ref(K); // Keep original factors for reference
 
   for (int i = 0; i < B_VOLUME; i++) {
-    // BVec_ref[i] = matmul_common::get_random<B_DATATYPE>();
-    // BVec_ref[i] = 8;
-    // BVec_ref[i] = matmul_common::get_random<A_DATATYPE>();
-    if (i < B_VOLUME / 2) {
-      // Use 1 for the first half of the matrix
-      BVec_ref[i] = 1; // Use 1 for even indices
-    } else {
-      // Use 2 for the second half of the matrix
-      BVec_ref[i] = 2; // Use 1 for odd indices
-    }
+    // Initialize BVec with random integers between -7 and 8
+    BVec_ref[i] = rand() % 16 - 8; // Random int8 values
+    // BVec_ref[i] = 1;
+    // Bvec_ref[i] = matmul_common::get_random<A_DATATYPE>();
   }
 
   for (int i = 0; i < K; i++) {
-    if (i < K / 2) {
-      if (i % 2 == 0)
-        BFactor_ref[i] = 1; // Use 1 for even indices
-      else
-        BFactor_ref[i] = 0.5; // Use 0.5 for odd indices
-    } else {
-      if (i % 2 == 0)
-        BFactor_ref[i] = 0.25; // Use 0.25 for even indices
-      else
-        BFactor_ref[i] = 0.125; // Use 0.125 for odd indices
-    }
+    // Initialize Factor_ref with 1/(random choice from 1, 2, 4, 8)
+    BFactor_ref[i] = 1.0f / (1 << (rand() % 4));
+    // Initialize Factor_ref with 1/(random int from 1 to 8)
+    // BFactor_ref[i] = 1.0f / (rand() % 8 + 1);
+    // if (i < 1024) {
+    //   if (i % 6 == 0)
+    //     BFactor_ref[i] = 1; // Use 1 for even indices
+    //   else
+    //     BFactor_ref[i] = 0.5; // Use 0.5 for odd indices
+    // } else {
+    //   if (i % 6 == 0)
+    //     BFactor_ref[i] = 0.25; // Use 0.25 for even indices
+    //   else
+    //     BFactor_ref[i] = 0.125; // Use 0.125 for odd indices
+    // }
   }
 
   constexpr int LARGE_TILE_SIZE = 64;
