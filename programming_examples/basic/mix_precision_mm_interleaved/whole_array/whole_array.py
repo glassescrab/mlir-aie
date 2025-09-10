@@ -7,6 +7,8 @@
 import argparse
 from ml_dtypes import bfloat16
 import numpy as np
+import csv
+import os
 
 from aie.extras.context import mlir_mod_ctx
 
@@ -122,6 +124,7 @@ def my_matmul(
     trace_size,
     generate_taps=False,
 ):
+    new_n = n + 2
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
 
@@ -214,13 +217,17 @@ def my_matmul(
     B_taps = []
     C_taps = []
 
+    A_sz = M * K
+    B_sz = K * N + K * N // n * 2
+    C_sz = M * N
+
     @device(dev_ty)
     def device_body():
         A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
-        B_l2_ty = np.ndarray[(k * (n + 2),), np.dtype[dtype_in_B]]
+        B_l2_ty = np.ndarray[(k * new_n,), np.dtype[dtype_in_B]]
         C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
         A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-        B_l1_ty = np.ndarray[(k, n + 2), np.dtype[dtype_in_B]]
+        B_l1_ty = np.ndarray[(k, new_n), np.dtype[dtype_in_B]]
         C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
         # AIE Core Function declarations
@@ -414,9 +421,9 @@ def my_matmul(
 
         # To/from AIE-array data movement
         @runtime_sequence(
-            np.ndarray[(M * K,), np.dtype[dtype_in]],
-            np.ndarray[(K * N + K * N // n * 2,), np.dtype[dtype_in_B]],
-            np.ndarray[(M * N,), np.dtype[dtype_out]],
+            np.ndarray[(A_sz,), np.dtype[dtype_in]],
+            np.ndarray[(B_sz,), np.dtype[dtype_in_B]],
+            np.ndarray[(C_sz,), np.dtype[dtype_out]],
         )
         def sequence(A, B, C):
             # We are limited in the number of BDs. After synchronizing, we can reuse BDs.
@@ -558,15 +565,15 @@ def my_matmul(
                             #     |0011    0011    |
                             #     |0011    0011    |
                             #      ----------------
-                            new_n = n + 2
+                            
+                            # B_col_offset = col * N // n // n_aie_cols * K * new_n
                             B_col_offset = col * K * new_n
-                            #  if not b_col_maj else col * n * K
-                            # if not b_col_maj:
-                            #     B_sizes = [N // n // n_aie_cols, K // k, k, n]
-                            #     B_strides = [n * n_aie_cols, k * N, N, 1]
-                            # else:
-                            #     B_sizes = [N // n // n_aie_cols, K // k, n, k]
-                            #     B_strides = [n * n_aie_cols * K, k, K, 1]
+
+                            # Non flat
+                            # B_sizes = [N // n // n_aie_cols, K // k, k, n + 4]
+                            # B_strides = [n * n_aie_cols, k * N, N, 1]
+
+                            # Flat
                             B_sizes = [N // n // n_aie_cols, K // k, new_n, k]
                             B_strides = [K * new_n * n_aie_cols, k * new_n, k, 1]
                             npu_dma_memcpy_nd(

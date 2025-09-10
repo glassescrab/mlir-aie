@@ -81,8 +81,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
   const T_in_B *__restrict pB_quantized = pB;
   const T_in_B *__restrict pBs_b = pB + colA * colB * MMUL::size_B;
   
-  for (unsigned i = 0; i < colA; ++i) {
-    // chess_prepare_for_pipelining chess_loop_range(4, ) {
+  for (unsigned i = 0; i < colA; ++i) chess_prepare_for_pipelining chess_loop_range(4, ) {
     for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {
       // Load quantized int8 weights
       aie::vector<T_in_B, MMUL::size_B> B_quantized;
