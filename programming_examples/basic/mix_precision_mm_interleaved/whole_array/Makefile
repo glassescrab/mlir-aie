@@ -18,11 +18,11 @@ K?=2048
 N?=2048
 
 # m, k, n: single AIE core GEMM dimensions
-m?=32
-k?=32
-n?=32
+m?=64
+k?=64
+n?=64
 
-n_aie_cols?=4
+n_aie_cols?=8
 b_col_maj?=0
 
 kernels=mix_${m}x${k}x${n}
@@ -60,6 +60,6 @@ endif
 
 include ${srcdir}/../makefile-common
 
-build/mix_${m}x${k}x${n}.o: ${kernels_dir}/mix_interleaved.cc
+build/mix_${m}x${k}x${n}.o: ${kernels_dir}/mix_interleaved_testing.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}

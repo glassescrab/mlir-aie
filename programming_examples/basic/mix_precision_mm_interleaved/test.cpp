@@ -171,12 +171,25 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < A_VOLUME; i++) {
     AVec[i] = matmul_common::get_random<A_DATATYPE>();
     // AVec[i] = (i / K) / 32;
+    // if (i % K < 24) {
+    //   AVec[i] = i / K / 8;
+    // } else {
+    //   AVec[i] = 0;
+    // }
+
     // if (i < A_VOLUME / 2) {
     //   // Use 1 for the first half of the matrix
-    //   AVec[i] = 4; // Use 1 for even indices
-    // } else {
-    //   // Use 2 for the second half of the matrix
-    //   AVec[i] = 8; // Use 1 for odd indices
+    //   if (i % 4 == 0)
+    //     AVec[i] = 4; // Use 4 for even indices
+    //   else
+    //     AVec[i] = 8; // Use 8 for odd indices
+    // }
+    // else {
+    //   // Use -4 for the second half of the matrix
+    //   if (i % 4 == 0)
+    //     AVec[i] = -4; // Use -4 for even indices
+    //   else
+    //     AVec[i] = -2; // Use -2 for odd indices
     // }
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
@@ -190,31 +203,44 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> BFactor_ref(K); // Keep original factors for reference
 
   for (int i = 0; i < B_VOLUME; i++) {
-    // BVec_ref[i] = matmul_common::get_random<B_DATATYPE>();
-    // BVec_ref[i] = 8;
-    BVec_ref[i] = matmul_common::get_random<A_DATATYPE>();
-    // BVec_ref[i] = (i % N) / 32;
-    // if (i < B_VOLUME / 2) {
-    //   // Use 1 for the first half of the matrix
-    //   BVec_ref[i] = 1; // Use 1 for even indices
+    // Initialize BVec with random integers between -7 and 8
+    BVec_ref[i] = rand() % 16 - 8; // Random int8 values
+    // if (i / K == 0) {
+    //   BVec_ref[i] = 1;
     // } else {
-    //   // Use 2 for the second half of the matrix
-    //   BVec_ref[i] = 2; // Use 1 for odd indices
+    //   BVec_ref[i] = 0;
+    // }
+    // BVec_ref[0] = 1;
+    // BVec_ref[i] = 1;
+    // if (i < B_VOLUME / 2) {
+    //   if (i % 2 == 0)
+    //     BVec_ref[i] = 1; // Use 1 for even indices
+    //   else
+    //     BVec_ref[i] = 2; // Use 0.5 for odd indices
+    // } else {
+    //   if (i % 2 == 0)
+    //     BVec_ref[i] = -2; // Use -2 for even indices
+    //   else
+    //     BVec_ref[i] = -1; // Use -1 for odd indices
     // }
   }
 
   for (int i = 0; i < K; i++) {
-    if (i < K / 2) {
-      if (i % 2 == 0)
-        BFactor_ref[i] = 1; // Use 1 for even indices
-      else
-        BFactor_ref[i] = 0.5; // Use 0.5 for odd indices
-    } else {
-      if (i % 2 == 0)
-        BFactor_ref[i] = 0.25; // Use 0.25 for even indices
-      else
-        BFactor_ref[i] = 0.125; // Use 0.125 for odd indices
-    }
+    // Initialize Factor_ref with 1/(random choice from 1, 2, 4, 8)
+    BFactor_ref[i] = 1.0f / (1 << (rand() % 4));
+    // Initialize Factor_ref with 1/(random int from 1 to 8)
+    // BFactor_ref[i] = 1.0f / (rand() % 8 + 1);
+    // if (i < 1024) {
+    //   if (i % 2 == 0)
+    //     BFactor_ref[i] = 1; // Use 1 for even indices
+    //   else
+    //     BFactor_ref[i] = 0.5; // Use 0.5 for odd indices
+    // } else {
+    //   if (i % 2 == 0)
+    //     BFactor_ref[i] = 0.25; // Use 0.25 for even indices
+    //   else
+    //     BFactor_ref[i] = 0.5; // Use 0.5 for odd indices
+    // }
   }
 
   constexpr int LARGE_TILE_SIZE = 64;
@@ -435,31 +461,68 @@ int main(int argc, const char *argv[]) {
     }
     C_DATATYPE *bufC = bo_out.map<C_DATATYPE *>();
     
-    // std::ofstream outfile("result.txt");
-    // outfile << "C = \n";
+    // // Save actual output matrix C to CSV file
+    // std::ofstream c_actual_csv("C_actual.csv");
+    // c_actual_csv << "# Actual Output Matrix C: " << M << " rows x " << N << " columns\n";
+    // c_actual_csv << "# Format: comma-separated values\n";
     // for (int i = 0; i < M; i++) {
     //   for (int j = 0; j < N; j++) {
-    //     outfile << bufC[i * N + j] << " ";
+    //     c_actual_csv << static_cast<float>(bufC[i * N + j]);
+    //     if (j < N - 1) c_actual_csv << ",";
     //   }
-    //   outfile << std::endl;
+    //   c_actual_csv << "\n";
     // }
-    // outfile.close();
+    // c_actual_csv.close();
 
-    // // Save output matrix to CSV file
-    // std::ofstream csv_outfile("result.csv");
-    // csv_outfile << "# Output Matrix C: " << M << " rows x " << N << " columns\n";
-    // csv_outfile << "# Format: comma-separated values\n";
+    // // Compute reference matrix C using CPU
+    // std::vector<ACC_DATATYPE> CVec_ref(C_VOLUME, 0);
     // for (int i = 0; i < M; i++) {
     //   for (int j = 0; j < N; j++) {
-    //     csv_outfile << static_cast<float>(bufC[i * N + j]);
-    //     if (j < N - 1) csv_outfile << ",";
+    //     ACC_DATATYPE sum = 0;
+    //     for (int k = 0; k < K; k++) {
+    //       // Use the original reference values for computation
+    //       ACC_DATATYPE a_val = static_cast<ACC_DATATYPE>(AVec[i * K + k]);
+    //       ACC_DATATYPE b_val = static_cast<ACC_DATATYPE>(BVec_ref[k * N + j]);
+    //       sum += a_val * b_val;
+    //     }
+    //     CVec_ref[i * N + j] = sum;
     //   }
-    //   csv_outfile << "\n";
     // }
-    // csv_outfile.close();
+
+    // // Save reference matrix C to CSV file
+    // std::ofstream c_ref_csv("C_reference.csv");
+    // c_ref_csv << "# Reference Matrix C: " << M << " rows x " << N << " columns\n";
+    // c_ref_csv << "# Format: comma-separated values\n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     c_ref_csv << static_cast<float>(CVec_ref[i * N + j]);
+    //     if (j < N - 1) c_ref_csv << ",";
+    //   }
+    //   c_ref_csv << "\n";
+    // }
+    // c_ref_csv.close();
+
+    // // Save difference matrix (actual - reference) to CSV file
+    // std::ofstream c_diff_csv("C_difference.csv");
+    // c_diff_csv << "# Difference Matrix (Actual - Reference): " << M << " rows x " << N << " columns\n";
+    // c_diff_csv << "# Format: comma-separated values\n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     float actual_val = static_cast<float>(bufC[i * N + j]);
+    //     float ref_val = static_cast<float>(CVec_ref[i * N + j]);
+    //     float diff = actual_val - ref_val;
+    //     c_diff_csv << diff;
+    //     if (j < N - 1) c_diff_csv << ",";
+    //   }
+    //   c_diff_csv << "\n";
+    // }
+    // c_diff_csv.close();
 
     // if (verbosity >= 1) {
-    //   std::cout << "Output matrix saved to result.txt and result.csv\n";
+    //   std::cout << "Output matrices saved to:\n";
+    //   std::cout << "  - C_actual.csv (NPU output)\n";
+    //   std::cout << "  - C_reference.csv (CPU reference)\n";
+    //   std::cout << "  - C_difference.csv (actual - reference)\n";
     // }
 
     if (do_verify) {
