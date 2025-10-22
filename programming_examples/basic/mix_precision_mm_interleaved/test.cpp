@@ -170,6 +170,7 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
     AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    // AVec[i] = (i / K) / 32;
     // if (i % K < 24) {
     //   AVec[i] = i / K / 8;
     // } else {
