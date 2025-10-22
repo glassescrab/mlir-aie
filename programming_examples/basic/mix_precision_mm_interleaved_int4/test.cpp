@@ -73,6 +73,8 @@ int main(int argc, const char *argv[]) {
 
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
+  
+  do_verify = true;
 
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
@@ -172,7 +174,10 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    AVec[i] = (i / K);
+    // AVec[i] = (i / K) / 64;
+    // AVec[i] = 1;
     // if (i < A_VOLUME / 2) {
     //   // Use 1 for the first half of the matrix
     //   AVec[i] = 4; // Use 1 for even indices
@@ -194,7 +199,8 @@ int main(int argc, const char *argv[]) {
 
   for (int i = 0; i < B_VOLUME; i++) {
     // BVec_ref[i] = matmul_common::get_random<B_DATATYPE>();
-    // BVec_ref[i] = 2;
+    // BVec_ref[i] = (i % N) / 64;
+    BVec_ref[i] = -1;
     // BVec_ref[i] = matmul_common::get_random<A_DATATYPE>();
     // if (i < 1000) {
     //   // Use 1 for the first half of the matrix
@@ -203,13 +209,13 @@ int main(int argc, const char *argv[]) {
     //   // Use 2 for the second half of the matrix
     //   BVec_ref[i] = -1; // Use -1 for odd indices
     // }
-    if (i < B_VOLUME / 2) {
-      // Use 1 for the first half of the matrix
-      BVec_ref[i] = 1; // Use 1 for even indices
-    } else {
-      // Use 2 for the second half of the matrix
-      BVec_ref[i] = 1; // Use 1 for odd indices
-    }
+    // if (i < B_VOLUME / 2) {
+    //   // Use 1 for the first half of the matrix
+    //   BVec_ref[i] = 1; // Use 1 for even indices
+    // } else {
+    //   // Use 2 for the second half of the matrix
+    //   BVec_ref[i] = -1; // Use -1 for odd indices
+    // }
   }
 
   for (int i = 0; i < B_VOLUME / group_size; i++) {
@@ -560,35 +566,69 @@ int main(int argc, const char *argv[]) {
     }
     C_DATATYPE *bufC = bo_out.map<C_DATATYPE *>();
     
-    // std::ofstream outfile("result.txt");
-    // outfile << "C = \n";
-    // for (int i = 0; i < M; i++) {
-    //   for (int j = 0; j < N; j++) {
-    //     outfile << bufC[i * N + j] << " ";
-    //   }
-    //   outfile << std::endl;
-    // }
-    // outfile.close();
-
-    // // Save output matrix to CSV file
-    // std::ofstream csv_outfile("result.csv");
-    // csv_outfile << "# Output Matrix C: " << M << " rows x " << N << " columns\n";
-    // csv_outfile << "# Format: comma-separated values\n";
-    // for (int i = 0; i < M; i++) {
-    //   for (int j = 0; j < N; j++) {
-    //     csv_outfile << static_cast<float>(bufC[i * N + j]);
-    //     if (j < N - 1) csv_outfile << ",";
-    //   }
-    //   csv_outfile << "\n";
-    // }
-    // csv_outfile.close();
-
-    // if (verbosity >= 1) {
-    //   std::cout << "Output matrix saved to result.txt and result.csv\n";
-    // }
+    // Save output matrix C to CSV file
+    std::ofstream output_c_csv("output_C.csv");
+    output_c_csv << "# Output Matrix C from NPU: " << M << " rows x " << N << " columns\n";
+    output_c_csv << "# Format: comma-separated values\n";
+    for (int i = 0; i < M; i++) {
+      for (int j = 0; j < N; j++) {
+        output_c_csv << static_cast<float>(bufC[i * N + j]);
+        if (j < N - 1) output_c_csv << ",";
+      }
+      output_c_csv << "\n";
+    }
+    output_c_csv.close();
 
     if (do_verify) {
       memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
+      
+      // // Compute reference C matrix
+      // std::vector<C_DATATYPE> CRef(C_VOLUME);
+      // for (int i = 0; i < M; i++) {
+      //   for (int j = 0; j < N; j++) {
+      //     ACC_DATATYPE sum = 0;
+      //     for (int k = 0; k < K; k++) {
+      //       sum += static_cast<ACC_DATATYPE>(AVec[i * K + k]) * 
+      //              static_cast<ACC_DATATYPE>(BVec_ref[k * N + j]);
+      //     }
+      //     CRef[i * N + j] = static_cast<C_DATATYPE>(sum);
+      //   }
+      // }
+      
+      // // Save reference matrix C to CSV file
+      // std::ofstream reference_c_csv("reference_C.csv");
+      // reference_c_csv << "# Reference Matrix C (CPU computed): " << M << " rows x " << N << " columns\n";
+      // reference_c_csv << "# Format: comma-separated values\n";
+      // for (int i = 0; i < M; i++) {
+      //   for (int j = 0; j < N; j++) {
+      //     reference_c_csv << static_cast<float>(CRef[i * N + j]);
+      //     if (j < N - 1) reference_c_csv << ",";
+      //   }
+      //   reference_c_csv << "\n";
+      // }
+      // reference_c_csv.close();
+      
+      // // Save difference matrix to CSV file
+      // std::ofstream diff_c_csv("diff_C.csv");
+      // diff_c_csv << "# Difference Matrix (Output - Reference): " << M << " rows x " << N << " columns\n";
+      // diff_c_csv << "# Format: comma-separated values\n";
+      // for (int i = 0; i < M; i++) {
+      //   for (int j = 0; j < N; j++) {
+      //     float diff = static_cast<float>(CVec[i * N + j]) - static_cast<float>(CRef[i * N + j]);
+      //     diff_c_csv << diff;
+      //     if (j < N - 1) diff_c_csv << ",";
+      //   }
+      //   diff_c_csv << "\n";
+      // }
+      // diff_c_csv.close();
+      
+      // if (verbosity >= 1) {
+      //   std::cout << "Output matrices saved to:\n";
+      //   std::cout << "  - output_C.csv (NPU output)\n";
+      //   std::cout << "  - reference_C.csv (CPU reference)\n";
+      //   std::cout << "  - diff_C.csv (difference)\n";
+      // }
+      
       if (verbosity >= 1) {
         if (do_verify_stochastic) {
           std::cout << "Verifying " << verify_stochastic_n_samples

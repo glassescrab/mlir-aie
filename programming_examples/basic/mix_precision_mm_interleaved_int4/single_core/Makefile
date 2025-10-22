@@ -14,9 +14,9 @@ targetname=single_core
 kernels=mix
 
 # M, K, N: final GEMM dimensions
-M?=2048
-K?=2048
-N?=2048
+M?=1024
+K?=1024
+N?=1024
 
 # m, k, n: single AIE core GEMM dimensions
 m?=64

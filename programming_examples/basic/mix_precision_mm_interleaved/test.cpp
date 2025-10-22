@@ -170,6 +170,7 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
     AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    // AVec[i] = (i / K) / 32;
     // if (i < A_VOLUME / 2) {
     //   // Use 1 for the first half of the matrix
     //   AVec[i] = 4; // Use 1 for even indices
@@ -191,14 +192,15 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < B_VOLUME; i++) {
     // BVec_ref[i] = matmul_common::get_random<B_DATATYPE>();
     // BVec_ref[i] = 8;
-    // BVec_ref[i] = matmul_common::get_random<A_DATATYPE>();
-    if (i < B_VOLUME / 2) {
-      // Use 1 for the first half of the matrix
-      BVec_ref[i] = 1; // Use 1 for even indices
-    } else {
-      // Use 2 for the second half of the matrix
-      BVec_ref[i] = 2; // Use 1 for odd indices
-    }
+    BVec_ref[i] = matmul_common::get_random<A_DATATYPE>();
+    // BVec_ref[i] = (i % N) / 32;
+    // if (i < B_VOLUME / 2) {
+    //   // Use 1 for the first half of the matrix
+    //   BVec_ref[i] = 1; // Use 1 for even indices
+    // } else {
+    //   // Use 2 for the second half of the matrix
+    //   BVec_ref[i] = 2; // Use 1 for odd indices
+    // }
   }
 
   for (int i = 0; i < K; i++) {

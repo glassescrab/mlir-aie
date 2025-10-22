@@ -217,10 +217,10 @@ def my_matmul(
     @device(dev_ty)
     def device_body():
         A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
-        B_l2_ty = np.ndarray[(k * (n + 2),), np.dtype[dtype_in_B]]
+        B_l2_ty = np.ndarray[(k * (n // 2 + 4),), np.dtype[dtype_in_B]]
         C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
         A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-        B_l1_ty = np.ndarray[(k, n + 2), np.dtype[dtype_in_B]]
+        B_l1_ty = np.ndarray[(k, n // 2 + 4), np.dtype[dtype_in_B]]
         C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
         # AIE Core Function declarations
@@ -415,7 +415,7 @@ def my_matmul(
         # To/from AIE-array data movement
         @runtime_sequence(
             np.ndarray[(M * K,), np.dtype[dtype_in]],
-            np.ndarray[(K * N + K * N // n * 2,), np.dtype[dtype_in_B]],
+            np.ndarray[(K * N // 2 + K * N // n * 4,), np.dtype[dtype_in_B]],
             np.ndarray[(M * N,), np.dtype[dtype_out]],
         )
         def sequence(A, B, C):
@@ -558,7 +558,7 @@ def my_matmul(
                             #     |0011    0011    |
                             #     |0011    0011    |
                             #      ----------------
-                            new_n = n + 2
+                            new_n = n // 2 + 4
                             B_col_offset = col * K * new_n
                             #  if not b_col_maj else col * n * K
                             # if not b_col_maj:
@@ -583,7 +583,7 @@ def my_matmul(
                             if generate_taps:
                                 B_taps.append(
                                     TensorAccessPattern(
-                                        (K, N + N // n * 2),
+                                        (K, N // 2 + N // n * 4),
                                         offset=B_col_offset,
                                         sizes=B_sizes,
                                         strides=B_strides,

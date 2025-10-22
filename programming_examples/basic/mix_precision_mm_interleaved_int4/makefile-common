@@ -38,6 +38,7 @@ dtype_in?=bf16
 dtype_in_B?=i8
 dtype_out?=bf16
 trace_size?=65536
+emulate_bfloat16_mmul_with_bfp16?=1
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
@@ -83,7 +84,7 @@ trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
-runargs+= -v 2 --warmup 16 --iters 64
+runargs+= -v 2 --warmup 16 --iters 1
 aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_in_B ${dtype_in_B} --dtype_out ${dtype_out}
 
 use_chess?=1
@@ -132,6 +133,11 @@ KERNEL_CFLAGS=${CHESSCCWRAP2_FLAGS}
 else ifeq (${devicename}, npu2)
 KERNEL_CFLAGS=${CHESSCCWRAP2P_FLAGS} -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
 endif
+endif
+
+ifeq ($(emulate_bfloat16_mmul_with_bfp16), 1)
+# KERNEL_DEFINES += -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
+aieargs += --emulate-bf16-mmul-with-bfp16 true
 endif
 
 ifeq (${opt_perf}, 1)

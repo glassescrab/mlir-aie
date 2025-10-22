@@ -84,34 +84,36 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
   for (unsigned i = 0; i < colA; ++i) chess_prepare_for_pipelining chess_loop_range(4, ) {
     for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {
       // Load quantized int8 weights
-      aie::vector<T_in_B, MMUL::size_B> B_quantized;
+      aie::vector<int8, 32> B_quantized;
       aie::vector<int4, MMUL::size_B> B_int4;
       aie::vector<int8, MMUL::size_B> B_int8;
-      aie::vector<T_in_B, 16> Bs_row;
-      aie::vector<T_in_A, 8> Bs_row_cast;
-      aie::vector<T_in_A, MMUL::size_B> Bs;
-      aie::vector<T_in_B, 16> Bzp_row;
+      aie::vector<int8, MMUL::size_B> B_int8_zeroed;
+      aie::vector<bfloat16, MMUL::size_B> B_float;
+      aie::vector<int8, 16> Bs_row;
+      aie::vector<bfloat16, 8> Bs_row_cast;
+      aie::vector<bfloat16, MMUL::size_B> Bs;
+      aie::vector<int8, 16> Bzp_row;
       aie::vector<int8, MMUL::size_B> Bzp;
       if constexpr (b_row_maj) {
-        B_quantized = aie::load_v<MMUL::size_B>(pB_quantized + (i * colB + j) * MMUL::size_B);
+        B_quantized = aie::load_v<32>(pB_quantized + (i * colB + j) * MMUL::size_B / 2);
       } else {
-        B_quantized = aie::transpose(aie::load_v<MMUL::size_B>(pB_quantized + (j * colA + i) * MMUL::size_B), t, s);
+        B_quantized = aie::transpose(aie::load_v<32>(pB_quantized + (j * colA + i) * MMUL::size_B), t, s);
       }
 
       // Load scaling factors
       Bs_row = aie::load_v<16>(pBs_b + i * 16);
-      Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
+      Bs_row_cast = aie::vector_cast<bfloat16>(Bs_row);
       Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
       
       // Load zero point values
-      Bzp_row = aie::load_v<16>(pBzp_b);
+      Bzp_row = aie::load_v<16>(pBzp_b + i * 16);
       Bzp = aie::transpose(Bzp_row.template grow_replicate<MMUL::size_B>(), t, s);
 
       // Dequantize: cast int8 to bf16 and apply scaling
       B_int4 = B_quantized.template cast_to<int4>();
       B_int8 = B_int4.template unpack();
       B_int8_zeroed = aie::sub(B_int8, Bzp);
-      B_float = aie::to_float<T_in_A>(B_int8_zeroed);
+      B_float = aie::to_float<bfloat16>(B_int8_zeroed);
       auto B_scaled = aie::mul(B_float, Bs);
       aie::vector<T_in_A, MMUL::size_B> B_final = aie::to_vector<T_in_A>(B_scaled);
       
@@ -120,7 +122,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
     }
   }
 
-
+  // Now perform standard bf16 GEMM using the preprocessed b_buf
   for (unsigned z = 0; z < rowA; z += 2)
     chess_prepare_for_pipelining chess_loop_range(4, ) {
       T_out *__restrict pC1 = pC + (z * colB) * MMUL::size_C;
@@ -133,118 +135,32 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
         {
           const T_in_A *__restrict pA1 = pA + (z * colA) * MMUL::size_A;
           const T_in_A *__restrict pA2 = pA + ((z + 1) * colA) * MMUL::size_A;
-          const T_in_B *__restrict pB1;
-          const T_in_B *__restrict pB2;
-          const T_in_B *__restrict pBs_b; // Scale factor for B matrix
-          const T_in_B *__restrict pBzp_b; // Zero point for B matrix
+          const T_in_A *__restrict pB1 = b_buf + (j) * MMUL::size_B;
+          const T_in_A *__restrict pB2 = b_buf + (j + 1) * MMUL::size_B;
 
-          const T_in_A *__restrict pBs;
-
-          if constexpr (b_row_maj) {
-            pB1 = pB + (j) * MMUL::size_B / 2;
-            pB2 = pB + (j + 1) * MMUL::size_B / 2;
-            pBs_b = pB + colA * colB * MMUL::size_B / 2;
-            pBzp_b = pB + colA * colB * MMUL::size_B / 2 + colA * s * 2; // times 2 because bf16 scale factor is 2 bytes
-
-          } else {
-            pB1 = pB + (j * colA) * MMUL::size_B / 2;
-            pB2 = pB + ((j + 1) * colA) * MMUL::size_B / 2;
-            pBs_b = pB + colA * colB * MMUL::size_B / 2;
-            pBzp_b = pB + colA * colB * MMUL::size_B / 2 + colA * s * 2;
-          }
           aie::vector<T_in_A, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
           pA1 += MMUL::size_A;
           aie::vector<T_in_A, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
           pA2 += MMUL::size_A;
-          aie::vector<T_in_A, MMUL::size_B> B0;
-          aie::vector<T_in_A, MMUL::size_B> B1;
-          aie::vector<T_in_B, 32> B0_raw;
-          aie::vector<T_in_B, 32> B1_raw;
-          aie::vector<int4, MMUL::size_B> B0_int4;
-          aie::vector<int4, MMUL::size_B> B1_int4;
-          aie::vector<int8, MMUL::size_B> B0_int8;
-          aie::vector<int8, MMUL::size_B> B1_int8;
-          aie::vector<int8, MMUL::size_B> B0_int8_zeroed;
-          aie::vector<int8, MMUL::size_B> B1_int8_zeroed;
-          // aie::vector<int8, MMUL::size_B> B0_const;
-          // aie::vector<int8, MMUL::size_B> B1_const;
-          aie::vector<T_in_A, MMUL::size_B> B0_float;
-          aie::vector<T_in_A, MMUL::size_B> B1_float;
-          aie::vector<T_in_B, 16> Bs_row;
-          aie::vector<T_in_B, 16> Bzp_row;
-          aie::vector<T_in_A, 8> Bs_row_cast;
-          // aie::vector<int8, 16> Bzp_row_cast;
+          
+          // Load preprocessed bf16 values from b_buf
+          aie::vector<T_in_A, MMUL::size_B> B0 = aie::load_v<MMUL::size_B>(pB1);
+          pB1 += MMUL::size_B * colB;
+          aie::vector<T_in_A, MMUL::size_B> B1 = aie::load_v<MMUL::size_B>(pB2);
+          pB2 += MMUL::size_B * colB;
 
-          aie::vector<T_in_A, MMUL::size_B> Bs;
-          aie::vector<T_in_B, MMUL::size_B> Bzp;
-
-          if constexpr (b_row_maj) {
-            B0_raw = aie::load_v<32>(pB1);
-            pB1 += MMUL::size_B * colB / 2;
-            B1_raw = aie::load_v<32>(pB2);
-            pB2 += MMUL::size_B * colB / 2;
-          } else {
-            B0_raw = aie::transpose(aie::load_v<32>(pB1), t, s);
-            pB1 += MMUL::size_B / 2;
-            B1_raw = aie::transpose(aie::load_v<32>(pB2), t, s);
-            pB2 += MMUL::size_B / 2;
-          }
-
-
-          // Load partial results from C buffer for accumulation in-place. The
-          // zero.cc function handles the zeroing of data when a new
-          // accumulation is needed (after the 'K' reduction dimension)
-          aie::vector<T_out, MMUL::size_C> acc_C00 =
-              aie::load_v<MMUL::size_C>(pC1);
-          aie::vector<T_out, MMUL::size_C> acc_C01 =
-              aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
-          aie::vector<T_out, MMUL::size_C> acc_C10 =
-              aie::load_v<MMUL::size_C>(pC2);
-          aie::vector<T_out, MMUL::size_C> acc_C11 =
-              aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+          // Load partial results from C buffer for accumulation in-place
+          aie::vector<T_out, MMUL::size_C> acc_C00 = aie::load_v<MMUL::size_C>(pC1);
+          aie::vector<T_out, MMUL::size_C> acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
+          aie::vector<T_out, MMUL::size_C> acc_C10 = aie::load_v<MMUL::size_C>(pC2);
+          aie::vector<T_out, MMUL::size_C> acc_C11 = aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
 
           MMUL C00(acc_C00);
           MMUL C01(acc_C01);
           MMUL C10(acc_C10);
           MMUL C11(acc_C11);
 
-          Bs_row = aie::load_v<16>(pBs_b);
-          pBs_b += 16;
-          Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
-          
-          // Bs = aie::broadcast<T_in_A, MMUL::size_B>(2);
-          Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
-
-          Bzp_row = aie::load_v<16>(pBzp_b);
-          pBzp_b += 16;
-          // Bzp_row_cast = aie::vector_cast<int8>(Bzp_row);
-
-          // Bzp = aie::broadcast<int8, MMUL::size_B>(-1);
-          Bzp = aie::transpose(Bzp_row.template grow_replicate<MMUL::size_B>(), t, s);
-
-          B0_int4 = B0_raw.template cast_to<int4>();
-          B1_int4 = B1_raw.template cast_to<int4>();
-
-          // B0_int4 = aie::broadcast<int4, MMUL::size_B>(1);
-          // B1_int4 = aie::broadcast<int4, MMUL::size_B>(1);
-
-          B0_int8 = B0_int4.template unpack();
-          B1_int8 = B1_int4.template unpack();
-          B0_int8_zeroed = aie::sub(B0_int8, Bzp);
-          B1_int8_zeroed = aie::sub(B1_int8, Bzp);
-          B0_float = aie::to_float<T_in_A>(B0_int8_zeroed);
-          B1_float = aie::to_float<T_in_A>(B1_int8_zeroed);
-          auto B0_acc = aie::mul(B0_float, Bs);
-          auto B1_acc = aie::mul(B1_float, Bs);
-
-          B0 = aie::to_vector<T_in_A>(B0_acc);
-          B1 = aie::to_vector<T_in_A>(B1_acc);
-
-          // B0_const = aie::broadcast<T_in_B, MMUL::size_B>(1);
-          // B1_const = aie::broadcast<T_in_B, MMUL::size_B>(1);
-          // B0 = aie::to_float<T_in_A>(B0_const);
-          // B1 = aie::to_float<T_in_A>(B1_const);
-
+          // Standard bf16 GEMM operations
           C00.mac(A0, B0);
           C01.mac(A0, B1);
           C10.mac(A1, B0);
@@ -259,67 +175,20 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
               pA1 += MMUL::size_A;
               A1 = aie::load_v<MMUL::size_A>(pA2);
               pA2 += MMUL::size_A;
-
-              if constexpr (b_row_maj) {
-                B0_raw = aie::load_v<32>(pB1);
-                pB1 += MMUL::size_B * colB / 2;
-                B1_raw = aie::load_v<32>(pB2);
-                pB2 += MMUL::size_B * colB / 2;
-              } else {
-                B0_raw = aie::transpose(aie::load_v<32>(pB1), t, s);
-                pB1 += MMUL::size_B / 2;
-                B1_raw = aie::transpose(aie::load_v<32>(pB2), t, s);
-                pB2 += MMUL::size_B / 2;
-              }
-
-              Bs_row = aie::load_v<16>(pBs_b);
-              pBs_b += 16;
-              Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
               
-              // Bs = aie::broadcast<T_in_A, MMUL::size_B>(2);
-              Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
+              // Load preprocessed bf16 values from b_buf
+              B0 = aie::load_v<MMUL::size_B>(pB1);
+              pB1 += MMUL::size_B * colB;
+              B1 = aie::load_v<MMUL::size_B>(pB2);
+              pB2 += MMUL::size_B * colB;
 
-              Bzp_row = aie::load_v<16>(pBzp_b);
-              pBzp_b += 16;
-              // Bzp_row_cast = aie::vector_cast<int8>(Bzp_row);
-
-              // Bzp = aie::broadcast<int8, MMUL::size_B>(-1);
-              Bzp = aie::transpose(Bzp_row.template grow_replicate<MMUL::size_B>(), t, s);
-
-              B0_int4 = B0_raw.template cast_to<int4>();
-              B1_int4 = B1_raw.template cast_to<int4>();
-
-              // B0_int4 = aie::broadcast<int4, MMUL::size_B>(1);
-              // B1_int4 = aie::broadcast<int4, MMUL::size_B>(1);
-
-              B0_int8 = B0_int4.template unpack();
-              B1_int8 = B1_int4.template unpack();
-              B0_int8_zeroed = aie::sub(B0_int8, Bzp);
-              B1_int8_zeroed = aie::sub(B1_int8, Bzp);
-              B0_float = aie::to_float<T_in_A>(B0_int8_zeroed);
-              B1_float = aie::to_float<T_in_A>(B1_int8_zeroed);
-              auto B0_acc = aie::mul(B0_float, Bs);
-              auto B1_acc = aie::mul(B1_float, Bs);
-
-              B0 = aie::to_vector<T_in_A>(B0_acc);
-              B1 = aie::to_vector<T_in_A>(B1_acc);
-
-              // B0_const = aie::broadcast<T_in_B, MMUL::size_B>(1);
-              // B1_const = aie::broadcast<T_in_B, MMUL::size_B>(1);
-              // B0 = aie::to_float<T_in_A>(B0_const);
-              // B1 = aie::to_float<T_in_A>(B1_const);
-              
+              // Standard bf16 GEMM operations
               C00.mac(A0, B0);
               C01.mac(A0, B1);
               C10.mac(A1, B0);
               C11.mac(A1, B1);
             }
 
-          // TODO make shift right here to keep most significat bits
-          // when lowering the output
-          // example below shows how to shift right 10 bits
-          // #define SHIFT 10
-          // aie::store_v(pC1, C00.template to_vector<T_out>(SHIFT));
           aie::store_v(pC1, C00.template to_vector<T_out>());
           pC1 += MMUL::size_C;
           aie::store_v(pC1, C01.template to_vector<T_out>());
@@ -333,6 +202,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
 
   event1();
 }
+
 
 #ifdef B_COL_MAJ
 constexpr bool is_b_row_maj = false;
