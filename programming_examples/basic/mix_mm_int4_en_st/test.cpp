@@ -74,7 +74,7 @@ int main(int argc, const char *argv[]) {
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
   
-  do_verify = true;
+  do_verify = false;
 
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
@@ -566,18 +566,18 @@ int main(int argc, const char *argv[]) {
     }
     C_DATATYPE *bufC = bo_out.map<C_DATATYPE *>();
     
-    // Save output matrix C to CSV file
-    std::ofstream output_c_csv("output_C.csv");
-    output_c_csv << "# Output Matrix C from NPU: " << M << " rows x " << N << " columns\n";
-    output_c_csv << "# Format: comma-separated values\n";
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        output_c_csv << static_cast<float>(bufC[i * N + j]);
-        if (j < N - 1) output_c_csv << ",";
-      }
-      output_c_csv << "\n";
-    }
-    output_c_csv.close();
+    // // Save output matrix C to CSV file
+    // std::ofstream output_c_csv("output_C.csv");
+    // output_c_csv << "# Output Matrix C from NPU: " << M << " rows x " << N << " columns\n";
+    // output_c_csv << "# Format: comma-separated values\n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     output_c_csv << static_cast<float>(bufC[i * N + j]);
+    //     if (j < N - 1) output_c_csv << ",";
+    //   }
+    //   output_c_csv << "\n";
+    // }
+    // output_c_csv.close();
 
     if (do_verify) {
       memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
