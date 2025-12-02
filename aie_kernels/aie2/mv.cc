@@ -67,9 +67,11 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
   // acquired b vector from the outer loop.
 
   event0();
+  int iter = 1;
+  for (int run = 0; run < iter; run++) {
   T_in *__restrict a_ptr = a;
   T_in *__restrict b_ptr = b;
-
+  
   for (int col = 0; col < k; col += 8) {
     aie::vector<T_in, 8> b_vec = aie::load_v<8>(b_ptr);
     T_out *__restrict c_ptr = c; // reset to the first row of C output on
@@ -127,6 +129,7 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
     a_ptr += 6 * m; // Move to next 8 columns of A.
     b_ptr += s;     // Move to next s (==8) rows of b.
   }
+  }
   event1();
 }
 
@@ -146,8 +149,8 @@ extern "C" {
 #endif
 
 #define combos(X)                                                              \
-  /* X(bfloat16, bf16, float, f32, accfloat) */                                \
-  X(int16, i16, int32, i32, acc32)
+  X(bfloat16, bf16, bfloat16, bf16, accfloat)                                  \
+  //X(int16, i16, int32, i32, acc32)
 
 #define matvec_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              ctype_acc)                                        \
