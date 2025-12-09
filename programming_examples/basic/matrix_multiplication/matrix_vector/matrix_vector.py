@@ -23,7 +23,7 @@ def my_matmul(dev, M, K):
     mtk_div_k = mtk // k 
 
     n_cols = 8
-    n_rows = 1 
+    n_rows = 1
 
     A_sz = M * K
     B_sz = K
@@ -224,13 +224,13 @@ def my_matmul(dev, M, K):
                             A_sizes = [1, K//mtk, n_rows * m, mtk]
                             A_strides = [0, mtk, K, 1]
                             npu_dma_memcpy_nd(
-                                    metadata=memA_fifos[col],
-                                    bd_id=bd_id_base + 1,
-                                    mem=A,
-                                    offsets=[0, 0, 0, A_offset],
-                                    sizes=A_sizes,
-                                    strides=A_strides,
-                                )
+                                metadata=memA_fifos[col],
+                                bd_id=bd_id_base + 1,
+                                mem=A,
+                                offsets=[0, 0, 0, A_offset],
+                                sizes=A_sizes,
+                                strides=A_strides,
+                            )
                             C_base_offset =  j * M // num_iter + pingpong * M // num_iter // 2
                             C_col_offset = col * M // num_iter // 2 // n_cols
                             C_offset = C_base_offset + C_col_offset

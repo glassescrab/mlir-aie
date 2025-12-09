@@ -47,41 +47,26 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
   static_assert(std::is_same<T_in, bfloat16>::value ||
                 std::is_same<T_in, int16_t>::value);
 
-  // This kernel expects a "32-bit word transposed matrix", i.e. the result
-  // of transposing the row-major representation of the matrix at a
-  // granularity of 4 bytes. For the bf16 data type of the inputs, this
-  // corresponds to a memory layout like this:
-  //  1  2  9 10 17 18
-  //  3  4 11 12 19 ..
-  //  5  6 13 14
-  //  7  8 15 16
-
-  // In the outer loop, we iterate through the b matrix once, in steps of
-  // 8*1-sized blocks.
-  //
-  // In the inner loop, we iterate through blocks of the A matrix in
-  // colum-major order, at each step consuming a r*8-sized block.
-  //
-  // At each iteration, we accumulate into r rows of the output. To
-  // accumulate, we add the dot product of each row of A with the same
-  // acquired b vector from the outer loop.
 
   event0();
-  int iter = 1;
-  for (int run = 0; run < iter; run++) {
-  T_in *__restrict a_ptr = a;
-  T_in *__restrict b_ptr = b;
-  
-  for (int col = 0; col < k; col += 8) {
-    aie::vector<T_in, 8> b_vec = aie::load_v<8>(b_ptr);
-    T_out *__restrict c_ptr = c; // reset to the first row of C output on
-                                 // each outer loop tieration
-    AIE_LOOP_MIN_ITERATION_COUNT(m / r)
-    for (int row = 0; row < m; row += r) {
-      aie::accum<T_acc, r> c_acc_in;
-      c_acc_in.from_vector(aie::load_v<r>(c_ptr));
 
-      const aie::vector<T_in, 2 * r> a_vec_0 = aie::load_v<2 * r>(a_ptr);
+  T_out *__restrict c_ptr = c;
+  
+  AIE_LOOP_MIN_ITERATION_COUNT(m / r)
+  for (int row = 0; row < m; row += r) {
+    // Initialize accumulator with zeros for this block of r rows
+    aie::accum<T_acc, r> c_acc;
+    c_acc.from_vector(aie::load_v<r>(c_ptr));
+    
+    T_in *__restrict a_ptr = a + row * 2; // Start at the correct row block in the transposed A
+    T_in *__restrict b_ptr = b;
+    
+    // Inner loop: iterate through k dimension in steps of 8
+    for (int col = 0; col < k; col += s) {
+      aie::vector<T_in, s> b_vec = aie::load_v<s>(b_ptr);
+      
+      const aie::vector<T_in, 2 * r> a_vec_0 = 
+          aie::load_v<2 * r>(a_ptr);
       const aie::vector<T_in, 2 * r> a_vec_1 =
           aie::load_v<2 * r>(a_ptr + 2 * m);
       const aie::vector<T_in, 2 * r> a_vec_2 =
@@ -105,31 +90,27 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
       const aie::vector<T_in, r> a_vec_3_1 = aie::filter_odd(a_vec_3);
 
       // The accumulate call below produces the following output:
-      // c_acc_out[i] = c_acc_in + b_vec[0]*a_vec_0_0[i]
-      //                         + b_vec[1]*a_vec_0_1[i]
-      //                         + ...
-      //                         + b_vec[7]*a_vec_3_1[i]
-      // i.e., the dot product of vector b_vec with one row (row+i)
+      // c_acc[i] = c_acc[i] + b_vec[0]*a_vec_0_0[i]
+      //                     + b_vec[1]*a_vec_0_1[i]
+      //                     + ...
+      //                     + b_vec[7]*a_vec_3_1[i]
+      // i.e., accumulating the dot product of vector b_vec with one row (row+i)
       // (recall that the different a_vecs are columns, thus we are
       // indexing into the same row i for each column).
-      // The same could be implemented with a sequence of aie::muls (one
-      // aie::mac to add the accumulator c_in), and then aie::adding all
-      // the resulting vectors together.
-      auto c_acc_out = aie::accumulate<r>(
-          c_acc_in, b_vec, 0, a_vec_0_0, a_vec_0_1, a_vec_1_0, a_vec_1_1,
+      // The accumulator stays in high precision throughout the entire k loop.
+      c_acc = aie::accumulate<r>(
+          c_acc, b_vec, 0, a_vec_0_0, a_vec_0_1, a_vec_1_0, a_vec_1_1,
           a_vec_2_0, a_vec_2_1, a_vec_3_0, a_vec_3_1);
 
-      aie::store_v(c_ptr, c_acc_out.template to_vector<T_out>());
-      a_ptr += 2 * r; // On last iteration, this advances to next column.
-                      // This is why we only iterate by 6*m in the outer
-                      // loop, for a total of 8*m, i.e. 8 columns.
-      c_ptr += r;     // Move to next r rows of the same columns in A.
+      a_ptr += s * m; // Move to next 8 columns of A
+      b_ptr += s;     // Move to next s (==8) elements of b
     }
+    
+    // After accumulating over all k, convert to output type and store once
+    aie::store_v(c_ptr, c_acc.template to_vector<T_out>());
+    c_ptr += r; // Move to next r rows of output
+  }
 
-    a_ptr += 6 * m; // Move to next 8 columns of A.
-    b_ptr += s;     // Move to next s (==8) rows of b.
-  }
-  }
   event1();
 }
 

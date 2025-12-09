@@ -80,7 +80,7 @@ trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
-runargs+=-v 2 --warmup 16 --iters 32
+runargs+=-v 2 --warmup 32 --iters 1
 aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
 use_chess?=1

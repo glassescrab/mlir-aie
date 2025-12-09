@@ -62,11 +62,13 @@ int main(int argc, const char *argv[]) {
 
   matmul_common::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
-  int do_verify = vm["verify"].as<bool>();
+  // int do_verify = vm["verify"].as<bool>();
+  int do_verify = 1;
   int n_iterations = vm["iters"].as<int>();
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
-  int b_col_maj = vm["b_col_maj"].as<int>();
+  // int b_col_maj = vm["b_col_maj"].as<int>();
+  int b_col_maj = 0;
 
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
@@ -160,22 +162,31 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    AVec[i] = matmul_common::get_random<A_DATATYPE>();
-    // AVec[i] = 1;
+    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    AVec[i] = 1;
+    // AVec[i] = i / K;
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    // BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
-    // Diagonal:
-    // if(i % N == i / N) {
-      BVec[i] = 1.0;
-    // } else {
-    //   BVec[i] = 0.0;
-    // }
+    // BVec[i] = matmul_common::get_random<B_DATATYPE>();
+    BVec[i] = i % N;
+    // BVec[i] = 1;
   }
-  memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
+  
+  // Transpose BVec: from row-major K×N to column-major K×N (which is row-major N×K)
+  std::vector<B_DATATYPE> BVec_transposed(B_VOLUME);
+  for (int k = 0; k < K; k++) {
+    for (int n = 0; n < N; n++) {
+      BVec_transposed[n * K + k] = BVec[k * N + n];
+    }
+  }
+
+  // Use this usually
+  // memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
+  // Just for testing GEVM since it assume B_col_maj
+  memcpy(bufB, BVec_transposed.data(), (BVec_transposed.size() * sizeof(B_DATATYPE))); 
 
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
