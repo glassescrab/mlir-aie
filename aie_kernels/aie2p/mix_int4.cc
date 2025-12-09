@@ -85,7 +85,8 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
     for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {
       // Load quantized int8 weights
       aie::vector<int8, 32> B_quantized;
-      aie::vector<int4, MMUL::size_B> B_int4;
+      aie::vector<uint4, MMUL::size_B> B_uint4;
+      aie::vector<uint8, MMUL::size_B> B_uint8;
       aie::vector<int8, MMUL::size_B> B_int8;
       aie::vector<int8, MMUL::size_B> B_int8_zeroed;
       aie::vector<bfloat16, MMUL::size_B> B_float;
@@ -110,8 +111,9 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
       Bzp = aie::transpose(Bzp_row.template grow_replicate<MMUL::size_B>(), t, s);
 
       // Dequantize: cast int8 to bf16 and apply scaling
-      B_int4 = B_quantized.template cast_to<int4>();
-      B_int8 = B_int4.template unpack();
+      B_uint4 = B_quantized.template cast_to<uint4>();
+      B_uint8 = B_uint4.template unpack();
+      B_int8 = B_uint8.template cast_to<int8>();
       B_int8_zeroed = aie::sub(B_int8, Bzp);
       B_float = aie::to_float<bfloat16>(B_int8_zeroed);
       auto B_scaled = aie::mul(B_float, Bs);
