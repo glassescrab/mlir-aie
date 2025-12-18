@@ -74,7 +74,8 @@ int main(int argc, const char *argv[]) {
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
   
-  do_verify = false;
+  do_verify = 0;
+
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
@@ -94,9 +95,9 @@ int main(int argc, const char *argv[]) {
 
   size_t A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
   // B matrix: hierarchical tiling with int4 weights + bf16 scales + int8 zeros (repeated)
-  // Each 64x64 large tile contains: 64x32 bytes (int4 weights) + 128 bytes (bf16 scales) + 128 bytes (int8 zeros repeated) = 2304 bytes
+  // Each 128x64 large tile contains: 128x32 bytes (int4 weights) + 256 bytes (bf16 scales) + 256 bytes (int8 zeros repeated) = 4608 bytes
   int num_large_tiles = (K / 64) * (N / 64);
-  size_t B_SIZE = num_large_tiles * (64 * 32 + 64 * 2 + 64 * 2); // 2304 bytes per large tile
+  size_t B_SIZE = num_large_tiles * (64 * 32 + 64 * 2 + 64 * 2); // 4608 bytes per large tile
   size_t C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
 
   std::vector<uint32_t> instr_v =
@@ -188,10 +189,10 @@ int main(int argc, const char *argv[]) {
   char *bufB = bo_b.map<char *>();
   
   // size_t bytes_per_row = K * sizeof(B_DATATYPE) + sizeof(std::bfloat16_t);
-  std::vector<int8_t> BVec(B_SIZE); // Allocate exact size for packed data
+  std::vector<uint8_t> BVec(B_SIZE); // Allocate exact size for packed data
   std::vector<std::bfloat16_t> BVec_ref(B_VOLUME); // Keep original weights for reference
   std::vector<std::bfloat16_t> BFactor_ref(B_VOLUME / group_size); // Keep original factors for reference
-  std::vector<int8_t> Bzeropoint_ref(B_VOLUME / group_size); // Keep original factors for reference
+  std::vector<uint8_t> Bzeropoint_ref(B_VOLUME / group_size); // Keep original zero-points for reference (uint8 for uint4 quantization)
 
   for (int i = 0; i < B_VOLUME; i++) {
     // BVec_ref[i] = matmul_common::get_random<B_DATATYPE>();
@@ -231,30 +232,30 @@ int main(int argc, const char *argv[]) {
   }
 
   for (int i = 0; i < B_VOLUME / group_size; i++) {
-    Bzeropoint_ref[i] = 0;
+    Bzeropoint_ref[i] = 8; // Default zero-point for uint4 (middle of [0, 15] range)
     // if (i < B_VOLUME / group_size / 2) {
     //   if (i % 2 == 0)
-    //     Bzeropoint_ref[i] = 1; // Use 1 for even indices
+    //     Bzeropoint_ref[i] = 7; // Use 7 for even indices
     //   else
-    //     Bzeropoint_ref[i] = -1; // Use -1 for odd indices
+    //     Bzeropoint_ref[i] = 9; // Use 9 for odd indices
     // } else {
     //   if (i % 2 == 0)
-    //     Bzeropoint_ref[i] = 2; // Use 2 for even indices
+    //     Bzeropoint_ref[i] = 6; // Use 6 for even indices
     //   else
-    //     Bzeropoint_ref[i] = -2; // Use -2 for odd indices
+    //     Bzeropoint_ref[i] = 10; // Use 10 for odd indices
     // }
   }
   constexpr int LARGE_TILE_SIZE = 64;
   constexpr int SMALL_TILE_SIZE = 8;
 
   // Helper function to quantize weight to int4 using the correct formula
-  auto quantize_to_int4 = [](float weight, float scale, int8_t zero_point) -> int8_t {
+  auto quantize_to_uint4 = [](float weight, float scale, uint8_t zero_point) -> uint8_t {
     // Quantization formula: quantized = (weight / scale) + zero_point
     float quantized = (weight / scale) + zero_point;
-    // Clamp to signed int4 range [-8, 7]
-    int quantized_int = std::max(-8, std::min(7, static_cast<int>(std::round(quantized))));
-    // Return as signed int4 value
-    return static_cast<int8_t>(quantized_int);
+    // Clamp to unsigned uint4 range [0, 15]
+    int quantized_int = std::max(0, std::min(15, static_cast<int>(std::round(quantized))));
+    // Return as unsigned uint4 value
+    return static_cast<uint8_t>(quantized_int);
   };
 
   // Pack int4 weights into the BVec buffer with custom column ordering
@@ -291,11 +292,11 @@ int main(int argc, const char *argv[]) {
                   int group_index2 = ref_index2 / group_size;
                   
                   // Quantize two weights using their respective group parameters
-                  int8_t weight1_q = quantize_to_int4(BVec_ref[ref_index1], BFactor_ref[group_index1], Bzeropoint_ref[group_index1]);
-                  int8_t weight2_q = quantize_to_int4(BVec_ref[ref_index2], BFactor_ref[group_index2], Bzeropoint_ref[group_index2]);
+                  uint8_t weight1_q = quantize_to_uint4(BVec_ref[ref_index1], BFactor_ref[group_index1], Bzeropoint_ref[group_index1]);
+                  uint8_t weight2_q = quantize_to_uint4(BVec_ref[ref_index2], BFactor_ref[group_index2], Bzeropoint_ref[group_index2]);
                   
                   // Pack two signed 4-bit weights into one byte (weight1 in lower 4 bits, weight2 in upper 4 bits)
-                  uint8_t packed_byte = (static_cast<uint8_t>(weight1_q) & 0x0F) | ((static_cast<uint8_t>(weight2_q) & 0x0F) << 4);
+                  uint8_t packed_byte = (weight1_q & 0x0F) | ((weight2_q & 0x0F) << 4);
                   
                   size_t byte_offset = large_tile_offset + small_tile_offset + (i * SMALL_TILE_SIZE + j) / 2;
                   BVec_bytes[byte_offset] = packed_byte;
@@ -363,7 +364,7 @@ int main(int argc, const char *argv[]) {
       }
     }
   }
-  
+
   // Copy the arranged data to the device buffer
   memcpy(bufB, BVec.data(), B_SIZE);
 

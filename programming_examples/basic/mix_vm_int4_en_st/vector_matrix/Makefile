@@ -48,6 +48,6 @@ include ${SELF_DIR}../makefile-common
 # variant.
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
-build/vm_${n}x${k}.o: ${kernels_dir}/vm_mix_int8_r16.cc
+build/vm_${n}x${k}.o: ${kernels_dir}/vm_mix_int4_r16.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}

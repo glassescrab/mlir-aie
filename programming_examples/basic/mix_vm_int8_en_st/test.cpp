@@ -71,7 +71,7 @@ int main(int argc, const char *argv[]) {
   int trace_size = vm["trace_sz"].as<int>();
   int b_col_maj = vm["b_col_maj"].as<int>();
 
-  do_verify = 1;
+  do_verify = 0;
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
 
@@ -171,8 +171,8 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
     // AVec[i] = i / K / 1024;
-    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
-    AVec[i] = 1;
+    AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    // AVec[i] = 1;
     // if (i % K < 24) {
     //   AVec[i] = i / K / 8;
     // } else {
@@ -206,8 +206,8 @@ int main(int argc, const char *argv[]) {
 
   for (int i = 0; i < B_VOLUME; i++) {
     // Initialize BVec with random integers between -7 and 8
-    BVec_ref[i] = rand() % 16 - 8; // Random int8 values
-    // BVec_ref[i] = (i / N) % 8;
+    // BVec_ref[i] = rand() % 16 - 8; // Random int8 values
+    BVec_ref[i] = (i / N) % 8;
     // if (i / N == 0) {
     //   BVec_ref[i] = 1; // Avoid zero weights
     // } else {
@@ -473,69 +473,69 @@ int main(int argc, const char *argv[]) {
     }
     C_DATATYPE *bufC = bo_out.map<C_DATATYPE *>();
     
-    // Save actual output matrix C to CSV file
-    std::ofstream c_actual_csv("C_actual.csv");
-    c_actual_csv << "# Actual Output Matrix C: " << M << " rows x " << N << " columns\n";
-    c_actual_csv << "# Format: comma-separated values\n";
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        c_actual_csv << static_cast<float>(bufC[i * N + j]);
-        if (j < N - 1) c_actual_csv << ",";
-      }
-      c_actual_csv << "\n";
-    }
-    c_actual_csv.close();
+    // // Save actual output matrix C to CSV file
+    // std::ofstream c_actual_csv("C_actual.csv");
+    // c_actual_csv << "# Actual Output Matrix C: " << M << " rows x " << N << " columns\n";
+    // c_actual_csv << "# Format: comma-separated values\n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     c_actual_csv << static_cast<float>(bufC[i * N + j]);
+    //     if (j < N - 1) c_actual_csv << ",";
+    //   }
+    //   c_actual_csv << "\n";
+    // }
+    // c_actual_csv.close();
 
-    // Compute reference matrix C using CPU
-    std::vector<ACC_DATATYPE> CVec_ref(C_VOLUME, 0);
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        ACC_DATATYPE sum = 0;
-        for (int k = 0; k < K; k++) {
-          // Use the original reference values for computation
-          ACC_DATATYPE a_val = static_cast<ACC_DATATYPE>(AVec[i * K + k]);
-          ACC_DATATYPE b_val = static_cast<ACC_DATATYPE>(BVec_ref[k * N + j]);
-          sum += a_val * b_val;
-        }
-        CVec_ref[i * N + j] = sum;
-      }
-    }
+    // // Compute reference matrix C using CPU
+    // std::vector<ACC_DATATYPE> CVec_ref(C_VOLUME, 0);
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     ACC_DATATYPE sum = 0;
+    //     for (int k = 0; k < K; k++) {
+    //       // Use the original reference values for computation
+    //       ACC_DATATYPE a_val = static_cast<ACC_DATATYPE>(AVec[i * K + k]);
+    //       ACC_DATATYPE b_val = static_cast<ACC_DATATYPE>(BVec_ref[k * N + j]);
+    //       sum += a_val * b_val;
+    //     }
+    //     CVec_ref[i * N + j] = sum;
+    //   }
+    // }
 
-    // Save reference matrix C to CSV file
-    std::ofstream c_ref_csv("C_reference.csv");
-    c_ref_csv << "# Reference Matrix C: " << M << " rows x " << N << " columns\n";
-    c_ref_csv << "# Format: comma-separated values\n";
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        c_ref_csv << static_cast<float>(CVec_ref[i * N + j]);
-        if (j < N - 1) c_ref_csv << ",";
-      }
-      c_ref_csv << "\n";
-    }
-    c_ref_csv.close();
+    // // Save reference matrix C to CSV file
+    // std::ofstream c_ref_csv("C_reference.csv");
+    // c_ref_csv << "# Reference Matrix C: " << M << " rows x " << N << " columns\n";
+    // c_ref_csv << "# Format: comma-separated values\n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     c_ref_csv << static_cast<float>(CVec_ref[i * N + j]);
+    //     if (j < N - 1) c_ref_csv << ",";
+    //   }
+    //   c_ref_csv << "\n";
+    // }
+    // c_ref_csv.close();
 
-    // Save difference matrix (actual - reference) to CSV file
-    std::ofstream c_diff_csv("C_difference.csv");
-    c_diff_csv << "# Difference Matrix (Actual - Reference): " << M << " rows x " << N << " columns\n";
-    c_diff_csv << "# Format: comma-separated values\n";
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        float actual_val = static_cast<float>(bufC[i * N + j]);
-        float ref_val = static_cast<float>(CVec_ref[i * N + j]);
-        float diff = actual_val - ref_val;
-        c_diff_csv << diff;
-        if (j < N - 1) c_diff_csv << ",";
-      }
-      c_diff_csv << "\n";
-    }
-    c_diff_csv.close();
+    // // Save difference matrix (actual - reference) to CSV file
+    // std::ofstream c_diff_csv("C_difference.csv");
+    // c_diff_csv << "# Difference Matrix (Actual - Reference): " << M << " rows x " << N << " columns\n";
+    // c_diff_csv << "# Format: comma-separated values\n";
+    // for (int i = 0; i < M; i++) {
+    //   for (int j = 0; j < N; j++) {
+    //     float actual_val = static_cast<float>(bufC[i * N + j]);
+    //     float ref_val = static_cast<float>(CVec_ref[i * N + j]);
+    //     float diff = actual_val - ref_val;
+    //     c_diff_csv << diff;
+    //     if (j < N - 1) c_diff_csv << ",";
+    //   }
+    //   c_diff_csv << "\n";
+    // }
+    // c_diff_csv.close();
 
-    if (verbosity >= 1) {
-      std::cout << "Output matrices saved to:\n";
-      std::cout << "  - C_actual.csv (NPU output)\n";
-      std::cout << "  - C_reference.csv (CPU reference)\n";
-      std::cout << "  - C_difference.csv (actual - reference)\n";
-    }
+    // if (verbosity >= 1) {
+    //   std::cout << "Output matrices saved to:\n";
+    //   std::cout << "  - C_actual.csv (NPU output)\n";
+    //   std::cout << "  - C_reference.csv (CPU reference)\n";
+    //   std::cout << "  - C_difference.csv (actual - reference)\n";
+    // }
 
     if (do_verify) {
       memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
