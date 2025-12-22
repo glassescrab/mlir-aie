@@ -77,7 +77,8 @@ int main(int argc, const char *argv[]) {
   
   n_warmup_iterations = 0;
   n_iterations = 1; 
-  do_verify = 0;
+  do_verify = 1;
+  verbosity = 1;
 
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
@@ -422,8 +423,6 @@ int main(int argc, const char *argv[]) {
       continue;
     }
     C_DATATYPE *bufC = bo_out.map<C_DATATYPE *>();
-
-
 
     float npu_time =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
