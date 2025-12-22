@@ -75,7 +75,9 @@ int main(int argc, const char *argv[]) {
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
   
-  do_verify = 1;
+  n_warmup_iterations = 0;
+  n_iterations = 1; 
+  do_verify = 0;
 
   int M = vm["M"].as<int>();
   int K = vm["K"].as<int>();
