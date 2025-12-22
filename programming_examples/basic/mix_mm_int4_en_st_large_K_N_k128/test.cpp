@@ -174,7 +174,7 @@ int main(int argc, const char *argv[]) {
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
 #ifdef TEST_STATIC
-    AVec[i] = 0.1f;
+    AVec[i] = static_cast<A_DATATYPE>(0.1f);
 #else
     AVec[i] = matmul_common::get_random<A_DATATYPE>();
 #endif
@@ -219,13 +219,15 @@ int main(int argc, const char *argv[]) {
   std::vector<std::bfloat16_t> BFactor_vec(num_scales); // [K/G, N]
   std::vector<uint8_t> Bzeropoint_vec(num_scales);      // [K/G, N]
 
+  for (int i = 0; i < num_scales; i++) {
 #ifdef TEST_STATIC
-    BFactor_vec[i] = 0.1f;
+    BFactor_vec[i] = static_cast<std::bfloat16_t>(0.1f);
     Bzeropoint_vec[i] = 0;
 #else
     BFactor_vec[i] = static_cast<std::bfloat16_t>(0.5f + (rand() % 100) / 200.0f); // Random scale 0.5 - 1.0
     Bzeropoint_vec[i] = rand() % 16;
 #endif
+  }
 
   // Reference Dequantization Logic (Pure C++)
   // Output: BVec_dequant (BF16) [K, N]
