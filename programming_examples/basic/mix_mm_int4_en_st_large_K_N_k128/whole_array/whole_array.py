@@ -122,6 +122,14 @@ def my_matmul(
     trace_size,
     generate_taps=False,
 ):
+    # new_n calculation based on packed tile size:
+    # Tile Size (K=128, N=64):
+    #   Weights (Int4): 128 * 64 / 2 = 4096 bytes
+    #   Scales (BF16): 64 * 2 = 128 bytes
+    #   Zero Points (Int8, Duplicated): 64 * 1 * 2 = 128 bytes
+    # Total Bytes per Tile = 4096 + 128 + 128 = 4352 bytes.
+    # The B buffer is shaped as memref<128 x new_n x i8>.
+    # new_n = Total Bytes / 128 rows = 4352 / 128 = 34.
     new_n = 34
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols

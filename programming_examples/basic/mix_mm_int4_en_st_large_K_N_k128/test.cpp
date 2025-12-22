@@ -74,12 +74,12 @@ int main(int argc, const char *argv[]) {
   int b_col_maj = vm["b_col_maj"].as<int>();
 
   // Fix the seed to ensure reproducibility in CI.
-  // srand(1726250518); 
-  srand(time(NULL));
+  srand(1726250518); 
+  // srand(time(NULL));
   
   n_warmup_iterations = 4;
   n_iterations = 16; 
-  do_verify = 0;
+  do_verify = 1;
   verbosity = 2;
 
   int M = vm["M"].as<int>();
