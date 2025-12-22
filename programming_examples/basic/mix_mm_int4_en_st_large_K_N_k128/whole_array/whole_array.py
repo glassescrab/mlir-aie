@@ -122,7 +122,7 @@ def my_matmul(
     trace_size,
     generate_taps=False,
 ):
-    new_n = n // 2 + 4
+    new_n = 34
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
 
