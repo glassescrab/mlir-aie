@@ -177,7 +177,7 @@ int main(int argc, const char *argv[]) {
 #ifdef TEST_STATIC
     AVec[i] = static_cast<A_DATATYPE>(0.1f);
 #else
-    AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    AVec[i] = static_cast<A_DATATYPE>((float)rand() / (float)RAND_MAX * 0.19f);
 #endif
     // AVec[i] = (i / K);
     // AVec[i] = (i / K) / 64;
@@ -204,7 +204,7 @@ int main(int argc, const char *argv[]) {
   std::vector<uint8_t> BVec_uint8(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
 #ifdef TEST_STATIC
-    BVec_uint8[i] = 1;
+    BVec_uint8[i] = 2;
 #else
     BVec_uint8[i] = matmul_common::get_random<uint8_t>() % 16;
 #endif
@@ -223,9 +223,10 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < num_scales; i++) {
 #ifdef TEST_STATIC
     BFactor_vec[i] = static_cast<std::bfloat16_t>(0.1f);
-    Bzeropoint_vec[i] = 0;
+    Bzeropoint_vec[i] = 1;
 #else
-    BFactor_vec[i] = static_cast<std::bfloat16_t>(0.5f + (rand() % 100) / 200.0f); // Random scale 0.5 - 1.0
+    BFactor_vec[i] =
+        static_cast<std::bfloat16_t>((float)rand() / (float)RAND_MAX * 0.05f);
     Bzeropoint_vec[i] = rand() % 16;
 #endif
   }
