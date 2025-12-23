@@ -1,0 +1,65 @@
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 0 --dev npu2 -M 1024 -K 1024 -N 2048 --dtype_in bf16 --dtype_in_B i8 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_1024x1024x2048_64x128x64_8c.mlir
+mkdir -p build
+cd build && xchesscc_wrapper aie2p -I /home/greg/libraries/vitis_aie_essentials/include  -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 -Dbf16_bf16_ONLY -DDIM_M=64 -DDIM_K=128 -DDIM_N=64 -DOPT_PERF_ENABLED -c /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc -o mix_64x128x64.o
+In file included from /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:21:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/aie.hpp:7845:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/aie_adf.hpp:74:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/adf/stream.hpp:53:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/adf.h:7:
+/home/greg/libraries/vitis_aie_essentials/include/adf/intrinsics.h:28:9: warning: 'REL_WRITE' macro redefined [-Wmacro-redefined]
+#define REL_WRITE -1
+        ^
+/home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:18:9: note: previous definition is here
+#define REL_WRITE 0
+        ^
+/home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:140:14: error: constraints not satisfied for class template 'vector' [with T = long long, Elems = 2]
+        aie::vector<int64_t, 2> z_load = aie::load_v<2>(pBzp_64 + (j & ~1));
+             ^~~~~~~~~~~~~~~~~~
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/aie_types.hpp:159:11: note: because 'long long' does not satisfy 'ElemBaseType'
+template <ElemBaseType T, unsigned Elems = detail::native_vector_length_v<T>>
+          ^
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/concepts.hpp:214:29: note: because 'detail::is_valid_element_type<long long>::value' evaluated to false
+concept ElemBaseType      = detail::is_valid_element_type<T>::value;
+                            ^
+/home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:140:42: error: no matching function for call to 'load_v'
+        aie::vector<int64_t, 2> z_load = aie::load_v<2>(pBzp_64 + (j & ~1));
+                                         ^~~~~~~~~~~~~~
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/aie.hpp:648:6: note: candidate template ignored: substitution failure [with Elems = 2, Resource = aie_dm_resource::none, T = int64_t]: constraints not satisfied for class template 'vector' [with T = long long, Elems = 2]
+auto load_v(const T *ptr) -> vector<aie_dm_resource_remove_t<T>, Elems>
+     ^                       ~~~~~~
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/aie.hpp:670:6: note: candidate template ignored: invalid explicitly-specified argument for template parameter 'Resource'
+auto load_v(const T *ptr) -> vector<aie_dm_resource_remove_t<T>, native_vector_length_v<T>>
+     ^
+/home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:148:14: error: constraints not satisfied for class template 'vector' [with T = long long, Elems = 8]
+        aie::vector<int64_t, 8> z_vec = aie::broadcast(z_val);
+             ^~~~~~~~~~~~~~~~~~
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/aie_types.hpp:159:11: note: because 'long long' does not satisfy 'ElemBaseType'
+template <ElemBaseType T, unsigned Elems = detail::native_vector_length_v<T>>
+          ^
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/concepts.hpp:214:29: note: because 'detail::is_valid_element_type<long long>::value' evaluated to false
+concept ElemBaseType      = detail::is_valid_element_type<T>::value;
+                            ^
+/home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:148:41: error: no matching function for call to 'broadcast'
+        aie::vector<int64_t, 8> z_vec = aie::broadcast(z_val);
+                                        ^~~~~~~~~~~~~~
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/aie.hpp:1120:39: note: candidate template ignored: substitution failure [with E = int64_t, Elems = 8]: constraints not satisfied for class template 'vector' [with T = long long, Elems = 8]
+vector<operand_base_type_t<E>, Elems> broadcast(E a)
+~~~~~~                                ^
+In file included from /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:21:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/aie.hpp:83:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/detail/abs.hpp:56:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/detail/../vector.hpp:71:
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/detail/aie2/vector.hpp:528:71: warning: division by zero is undefined [-Wdivision-by-zero]
+                                                                Elems / (    DstSize / type_bits());
+                                                                      ^ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/greg/libraries/vitis_aie_essentials/include/aie_api/detail/../vector.hpp:266:59: note: in instantiation of function template specialization 'aie::detail::vector_base<signed char, 32>::cast_to<uint4_t>' requested here
+        using result_base = decltype(base_type().template cast_to<DstT>());
+                                                          ^
+/home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:154:40: note: in instantiation of function template specialization 'aie::vector<signed char, 32>::cast_to<uint4_t>' requested here
+        B_uint4 = B_quantized.template cast_to<uint4>();
+                                       ^
+2 warnings and 4 errors generated.
+xchesscc Failed No such device
+The Program xchesscc has encountered an unexpected error exiting ... xchesscc Failed No such device
+make: *** [Makefile:65: build/mix_64x128x64.o] Error 255
