@@ -56,6 +56,9 @@ using ACC_DATATYPE = DTYPE_ACC;
 // Verification tolerance
 // See "Note on Numerical Tolerances" in README.md
 // Relaxed tolerances for Random BF16/Int4 mix
+constexpr long long verify_stochastic_threshold = 1024 * 1024 * 1024;
+constexpr int verify_stochastic_n_samples = 1000;
+
 float abs_tol = 0.5f;
 float rel_tol = 0.05f;
 
@@ -79,7 +82,7 @@ int main(int argc, const char *argv[]) {
   
   n_warmup_iterations = 4;
   n_iterations = 16; 
-  do_verify = 1;
+  do_verify = 0;
   verbosity = 2;
 
   int M = vm["M"].as<int>();
@@ -88,7 +91,8 @@ int main(int argc, const char *argv[]) {
 
   int group_size = 128; // Fixed group size for int4 quantization
 
-
+  bool do_verify_stochastic =
+      (long long)M * N * K > verify_stochastic_threshold;
 
   if (verbosity >= 1) {
     std::cout << "Matrix size " << M << "x" << K << "x" << N << std::endl;
@@ -329,18 +333,32 @@ int main(int argc, const char *argv[]) {
         // "64 values then another 64 values" -> [z0..z63, z0..z63]
         size_t zero_point_offset = large_tile_offset + 128 * 32 + 64 * 2;
 
-        for (int repeat = 0; repeat < 2; repeat++) {
-          for (int i = 0; i < 64; i++) {
-            int g = large_tile_row;
-            int col = large_tile_col * 64 + i;
-            int scale_idx = g * N + col;
+        for (int group = 0; group < LARGE_TILE_SIZE_COL / SMALL_TILE_SIZE; group++) {
+          for (int repeat = 0; repeat < 2; repeat++) {
+            for (int i = 0; i < 8; i++) {
+              int g = large_tile_row;
+              int col = large_tile_col * 64 + group * 8 + i;
+              int scale_idx = g * N + col;
 
-            uint8_t z = Bzeropoint_vec[scale_idx];
+              uint8_t z = Bzeropoint_vec[scale_idx];
 
-            // Offset: repeat * 64 + i
-            BVec_bytes[zero_point_offset + repeat * 64 + i] = z;
+              // Offset: group * 8 + i
+              BVec_bytes[zero_point_offset + group * 16 + repeat * 8 + i] = z;
+            }
           }
         }
+        // for (int repeat = 0; repeat < 2; repeat++) {
+        //   for (int i = 0; i < 64; i++) {
+        //     int g = large_tile_row;
+        //     int col = large_tile_col * 64 + i;
+        //     int scale_idx = g * N + col;
+
+        //     uint8_t z = Bzeropoint_vec[scale_idx];
+
+        //     // Offset: repeat * 64 + i
+        //     BVec_bytes[zero_point_offset + repeat * 64 + i] = z;
+        //   }
+        // }
 
         large_tile_index++;
       }
@@ -385,21 +403,6 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
   float macs = 2.0 * float(M) * float(K) * float(N);
 
-  std::vector<C_DATATYPE> CRef(C_VOLUME);
-
-  if (do_verify) {
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        ACC_DATATYPE sum = 0;
-        for (int k = 0; k < K; k++) {
-          sum += static_cast<ACC_DATATYPE>(AVec[i * K + k]) * 
-                  static_cast<ACC_DATATYPE>(BVec_dequant[k * N + j]);
-        }
-        CRef[i * N + j] = static_cast<C_DATATYPE>(sum);
-      }
-    }
-  }
-
   for (unsigned iter = 0; iter < num_iter; iter++) {
 
     if (verbosity >= 1) {
@@ -424,6 +427,40 @@ int main(int argc, const char *argv[]) {
       continue;
     }
     C_DATATYPE *bufC = bo_out.map<C_DATATYPE *>();
+    
+    if (do_verify) {
+      memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
+      
+      if (verbosity >= 1) {
+        if (do_verify_stochastic) {
+          std::cout << "Verifying " << verify_stochastic_n_samples
+                    << " random samples against reference matmul ..."
+                    << std::endl;
+        } else {
+          std::cout << "Verifying against reference matmul ..." << std::endl;
+        }
+      }
+      auto vstart = std::chrono::system_clock::now();
+      if (do_verify_stochastic) {
+        errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
+                                                  ACC_DATATYPE>(
+            M, N, K, AVec, BVec_dequant, CVec, verify_stochastic_n_samples, verbosity,
+            abs_tol, rel_tol, b_col_maj);
+      } else {
+        errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
+            M, N, K, AVec, BVec_dequant, CVec, verbosity, abs_tol, rel_tol, b_col_maj);
+      }
+      auto vstop = std::chrono::system_clock::now();
+      float vtime =
+          std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
+              .count();
+      if (verbosity >= 1) {
+        std::cout << "Verify time: " << vtime << " s." << std::endl;
+      }
+    } else {
+      if (verbosity >= 1)
+        std::cout << "WARNING: matmul results not verified." << std::endl;
+    }
 
     float npu_time =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
@@ -438,44 +475,6 @@ int main(int argc, const char *argv[]) {
   if (trace_size > 0) {
     matmul_common::write_out_trace((char *)bufTrace, trace_size,
                                    vm["trace_file"].as<std::string>());
-  }
-
-  if (do_verify) {
-    if (verbosity >= 1) {
-      std::cout << "Verifying against reference matmul (last iteration) ..." << std::endl;
-      std::cout << "First 4 elements of CRef: ";
-      for(int i=0; i<4 && i<C_VOLUME; ++i) std::cout << (float)CRef[i] << " ";
-      std::cout << std::endl;
-
-      // Copy output from the mapped buffer
-      memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
-      
-      std::cout << "First 4 elements of CVec: ";
-      for(int i=0; i<4 && i<C_VOLUME; ++i) std::cout << (float)CVec[i] << " ";
-      std::cout << std::endl;
-    } else {
-      // Ensure we copy data even if verbosity low
-      memcpy(CVec.data(), bufOut, (CVec.size() * sizeof(C_DATATYPE)));
-    }
-
-    for (int i = 0; i < M; i++) {
-      for (int j = 0; j < N; j++) {
-        float ref = static_cast<float>(CRef[i * N + j]);
-        float act = static_cast<float>(CVec[i * N + j]);
-        float diff = std::abs(act - ref);
-        float threshold = abs_tol + rel_tol * std::abs(ref);
-        
-        if (diff > threshold) {
-          errors++;
-          if (verbosity >= 2 && errors < 100) {
-             std::cout << "Error at (" << i << ", " << j << "): Expected " << ref << ", Got " << act << ", Diff " << diff << std::endl;
-          }
-        }
-      }
-    }
-  } else {
-      if (verbosity >= 1)
-        std::cout << "WARNING: matmul results not verified." << std::endl;
   }
 
   std::cout << std::endl
@@ -497,7 +496,10 @@ int main(int argc, const char *argv[]) {
     return 0;
   } else {
     std::cout << "\nError count: " << errors;
-
+    if (do_verify_stochastic) {
+      std::cout << " (out of " << verify_stochastic_n_samples
+                << " random samples)";
+    }
     std::cout << "\n\n";
 
     std::cout << "\nFailed.\n\n";

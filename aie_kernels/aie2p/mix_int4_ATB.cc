@@ -131,37 +131,10 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
         // Without transpose, we get [S0..S7, S0..S7...] matching Row-Major Per-Column scaling.
         Bs = Bs_row_bf16.template grow_replicate<MMUL::size_B>();
         
-        // Load zero point values - Use j (N-dim).
-        // Packed as 8 bytes (plus padding/garbage).
-        // We load 16 bytes (128-bit aligned) as 4x int32.
-        // pBzp_b assumed 128-bit aligned.
-        const int32_t *pBzp_32 = reinterpret_cast<const int32_t*>(pBzp_b);
-        // Offset: (j & ~1) * 8 bytes / 4 bytes_per_int = (j & ~1) * 2;
-        aie::vector<int32_t, 4> z_load_32 = aie::load_v<4>(pBzp_32 + (j & ~1) * 2);
+        // Load zero point values
+        Bzp_row = aie::load_v<16>(pBzp_b + j * 16);
+        Bzp = Bzp_row.template grow_replicate<MMUL::size_B>();
 
-        // We want 8 bytes (2 int32s).
-        // If j even: indices 0, 1. If j odd: indices 2, 3.
-        int base_idx = (j % 2) * 2;
-        
-        // Extract scalars.
-        int32_t z0_val = z_load_32[base_idx];
-        int32_t z1_val = z_load_32[base_idx + 1];
-
-        // Broadcast the two int32s to full vectors.
-        // vector<int32, 16> holds 64 bytes.
-        // Explicitly template broadcast to ensure correct vector size 16.
-        aie::vector<int32_t, 16> z0_vec = aie::broadcast<int32_t, 16>(z0_val);
-        aie::vector<int32_t, 16> z1_vec = aie::broadcast<int32_t, 16>(z1_val);
-        
-        // Interleave to get [z0, z1, z0, z1...] pattern.
-        auto z_interleaved = aie::interleave_zip(z0_vec, z1_vec, 1).first;
-
-        // Reinterpret as int8 to get Bzp (64x int8).
-        // Direct cast_to<int8> does element-wise conversion (truncation), not bit reinterpretation.
-        // Use a temporary buffer to bit-cast.
-        alignas(16) int32_t tmp_z[16];
-        aie::store_v(tmp_z, z_interleaved);
-        Bzp = aie::load_v<MMUL::size_B>((int8_t*)tmp_z);
 
         // Dequantize: cast int8 to bf16 and apply scaling
         B_uint4 = B_quantized.template cast_to<uint4>();
