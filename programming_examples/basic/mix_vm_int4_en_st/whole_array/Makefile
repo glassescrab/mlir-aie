@@ -19,7 +19,7 @@ N?=8192
 
 # m, k, n: single AIE core GEMM dimensions
 m?=64
-k?=64
+k?=128
 n?=64
 
 n_aie_cols?=8

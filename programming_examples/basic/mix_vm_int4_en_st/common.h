@@ -100,6 +100,11 @@ int8_t get_random<int8_t>() {
 }
 
 template <>
+uint8_t get_random<uint8_t>() {
+  return (uint8_t)rand() % 0x100;
+}
+
+template <>
 std::bfloat16_t get_random<std::bfloat16_t>() {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
