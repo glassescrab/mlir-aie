@@ -15,8 +15,8 @@ targetname=vector_matrix
 # in source at <targetname>.py as well as here
 # GEVM: M=1 (always), K is reduction dim, N is output dim
 M?=1
-K?=4096
-N?=4096
+K?=16384
+N?=32768
 k?=128
 n?=64
 

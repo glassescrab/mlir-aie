@@ -216,37 +216,39 @@ def my_matmul(dev, N, K):
                             # Transfer vector A (broadcast to all columns)
                             npu_dma_memcpy_nd(
                                 metadata=memA_fifos[col],
-                                bd_id=bd_id_base + 2,
+                                bd_id=bd_id_base + 3,
                                 mem=A,
                                 sizes=[1, 1, 1, K],
                                 strides=[0, 0, 0, 1],
                             )
-                            B_base_offset = (j * K * N // num_iter + pingpong * K * N // num_iter // 2) // n * new_n
-                            B_col_offset = col * K * new_n * n_rows
-                            B_sizes = [K // k, n_rows , new_n, k]
-                            B_strides = [k * new_n, K * new_n, k, 1]
-                            B_offset = B_base_offset + B_col_offset
-                            npu_dma_memcpy_nd(
-                                metadata=memB_fifos[col],
-                                bd_id=bd_id_base + 1,
-                                mem=B,
-                                offsets=[0, 0, 0, B_offset],
-                                sizes=B_sizes,
-                                strides=B_strides,
-                            )
+                            for b_section in range(2):
+                                B_base_offset = K * n_rows * new_n * (2 * j + pingpong) + K * new_n // 2 * b_section
+                                # (j * K * N // num_iter + pingpong * K * N // num_iter // 2) // n * new_n
+                                B_col_offset = col * K * N // n_cols // n * new_n
+                                B_sizes = [K // k // 2, n_rows , new_n, k]
+                                B_strides = [k * new_n, K * new_n, k, 1]
+                                B_offset = B_base_offset + B_col_offset
+                                npu_dma_memcpy_nd(
+                                    metadata=memB_fifos[col],
+                                    bd_id=bd_id_base + 1 + b_section,
+                                    mem=B,
+                                    offsets=[0, 0, 0, B_offset],
+                                    sizes=B_sizes,
+                                    strides=B_strides,
+                                )
                             
                             # Transfer output C
                             C_base_offset = j * N // num_iter + pingpong * N // num_iter // 2
-                            C_col_offset = col * N // num_iter // 2 // n_cols
+                            C_col_offset = col * n
                             C_offset = C_base_offset + C_col_offset
-                            C_size0 = N // num_iter // 2 // n_cols
+                            # C_size0 = N // num_iter // 2 // n_cols
                             npu_dma_memcpy_nd(
                                 metadata=memC_fifos[col],
                                 bd_id=bd_id_base,
                                 mem=C,
                                 offsets=[0, 0, 0, C_offset],
-                                sizes=[1, 1, 1, C_size0],
-                                strides=[0, 0, 0, 1],
+                                sizes=[1, 1, N // n // num_iter // 2 // n_cols, n],
+                                strides=[0, 0, n * n_cols, 1],
                             )
                         if j > 0 or (j == 0 and pingpong > 0):
                             dma_wait(*memC_fifos)
