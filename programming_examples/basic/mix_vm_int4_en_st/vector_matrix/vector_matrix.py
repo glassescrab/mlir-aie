@@ -14,6 +14,8 @@ from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
+def ceildiv(a, b):
+    return (a + b - 1) // b
 
 def my_matmul(dev, N, K):
  
@@ -38,7 +40,6 @@ def my_matmul(dev, N, K):
     C_sz_div_n_cols = C_sz // n_cols 
 
     N_div_n = N // n
-    N_div_n_div_n_cols = N // (n * n_cols) 
     K_div_k = K // k
 
     n_x_k = n * k
@@ -207,11 +208,17 @@ def my_matmul(dev, N, K):
                 # GEVM: A is vector (K,) bf16, B is packed int8 matrix (K, N) with scaling factors, C is vector (N,) bf16
                 # B matrix is organized as 64x64 tiles with scaling factors
                 # Each tile: 64x64 int8 weights + 64 bf16 scale factors = 4096 + 128 = 4224 bytes
-                num_iter = N_div_n_div_n_cols // n_rows // 2
+                num_transfer = ceildiv(N // n, n_cols * n_rows)
+                num_iter = ceildiv(num_transfer, 2)  # Ping-pong between 2 sets of transfers
                 
                 for j in range(num_iter):
                     for pingpong in [0,1]:
                         bd_id_base = 8 * pingpong
+                        # col_base = j * 2 * n * n_cols * n_rows + pingpong * n * n_cols * n_rows
+                        # if col_base >= N:
+                        #     break
+                        # if (j == num_iter -1) and (pingpong == 1):
+                        #     break
                         for col in range(n_cols):
                             # Transfer vector A (broadcast to all columns)
                             npu_dma_memcpy_nd(
@@ -238,7 +245,7 @@ def my_matmul(dev, N, K):
                                 )
                             
                             # Transfer output C
-                            C_base_offset = j * N // num_iter + pingpong * N // num_iter // 2
+                            C_base_offset = j * N // num_transfer * 2 + pingpong * N // num_transfer
                             C_col_offset = col * n
                             C_offset = C_base_offset + C_col_offset
                             # C_size0 = N // num_iter // 2 // n_cols
