@@ -16,7 +16,7 @@ targetname=vector_matrix
 # GEVM: M=1 (always), K is reduction dim, N is output dim
 M?=1
 K?=4096
-N?=16384
+N?=14336
 k?=128
 n?=64
 

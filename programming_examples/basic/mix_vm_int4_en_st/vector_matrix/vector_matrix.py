@@ -214,9 +214,10 @@ def my_matmul(dev, N, K):
                 for j in range(num_iter):
                     for pingpong in [0,1]:
                         bd_id_base = 8 * pingpong
-                        # col_base = j * 2 * n * n_cols * n_rows + pingpong * n * n_cols * n_rows
-                        # if col_base >= N:
-                        #     break
+                        col_base = j * 2 * n * n_cols * n_rows + pingpong * n * n_cols * n_rows
+                        # print(col_base)
+                        if col_base >= N:
+                            break
                         # if (j == num_iter -1) and (pingpong == 1):
                         #     break
                         for col in range(n_cols):
@@ -254,7 +255,7 @@ def my_matmul(dev, N, K):
                                 bd_id=bd_id_base,
                                 mem=C,
                                 offsets=[0, 0, 0, C_offset],
-                                sizes=[1, 1, N // n // num_iter // 2 // n_cols, n],
+                                sizes=[1, 1, N // n // num_transfer // n_cols, n],
                                 strides=[0, 0, n * n_cols, 1],
                             )
                         if j > 0 or (j == 0 and pingpong > 0):
