@@ -1,0 +1,97 @@
+mkdir -p build
+cd build && xchesscc_wrapper aie2p -I /home/greg/libraries/vitis_aie_essentials/include  -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 -Dbf16_bf16_ONLY -DDIM_M=64 -DDIM_K=128 -DDIM_N=64 -DOPT_PERF_ENABLED -c /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc -o mix_64x128x64.o
+In file included from /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:21:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/aie.hpp:7845:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/aie_adf.hpp:74:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/aie_api/adf/stream.hpp:53:
+In file included from /home/greg/libraries/vitis_aie_essentials/include/adf.h:7:
+/home/greg/libraries/vitis_aie_essentials/include/adf/intrinsics.h:28:9: warning: 'REL_WRITE' macro redefined [-Wmacro-redefined]
+#define REL_WRITE -1
+        ^
+/home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/../../../../aie_kernels/aie2p/mix_int4_ATB.cc:18:9: note: previous definition is here
+#define REL_WRITE 0
+        ^
+1 warning generated.
+Warning in "": (imprecise line-number, the error occurred somewhere in this function): loop found to have 2 iterations, fewer than the explicitly annotated minimum 4 [-Wincorrect-annotation]
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-xclbin --no-compile-host --xclbin-name=final_1024x1024x2048_64x128x64_8c.xclbin \
+			 \
+			--aie-generate-npu-insts --npu-insts-name=insts_1024x1024x2048_64x128x64_8c.txt ../build/aie_1024x1024x2048_64x128x64_8c.mlir
+
+Generating: /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/build/aie_1024x1024x2048_64x128x64_8c.mlir.prj/aie_cdo_elfs.bin
+Generating: /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/build/aie_1024x1024x2048_64x128x64_8c.mlir.prj/aie_cdo_init.bin
+Generating: /home/greg/Desktop/mlir-aie-w4a16/programming_examples/basic/mix_mm_int4_en_st_large_K_N_k128/whole_array/build/aie_1024x1024x2048_64x128x64_8c.mlir.prj/aie_cdo_enable.bin
+export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
+ ./whole_array.exe -x build/final_1024x1024x2048_64x128x64_8c.xclbin -i build/insts_1024x1024x2048_64x128x64_8c.txt -k MLIR_AIE -M 1024 -K 1024 -N 2048 --b_col_maj 0 -v 2 --warmup 32 --iters 64
+Matrix size 1024x1024x2048
+Sequence instr count: 2756
+Loading xclbin: build/final_1024x1024x2048_64x128x64_8c.xclbin
+Kernel opcode: MLIR_AIE
+Name: MLIR_AIE
+Registering xclbin: build/final_1024x1024x2048_64x128x64_8c.xclbin
+Getting hardware context.
+Getting handle to kernel:MLIR_AIE
+Writing data into buffer objects.
+DTYPE_IN  = std::bfloat16_t
+DTYPE_OUT = std::bfloat16_t
+Verification tolerance 0.5 absolute, 0.05 relative.
+B matrix layout: Each row contains 1024 int8 weights + 1 bf16 scale factor
+A = 
+    0.13      0.19      0.17      0.18      0.05   ...     0.17      0.14      0.12      0.06      0.14  
+    0.11      0.08      0.15      0.03      0.05   ...     0.10      0.17      0.09      0.01      0.17  
+    0.06      0.07      0.12      0.16      0.05   ...     0.11      0.18      0.06      0.03      0.00  
+    0.08      0.04      0.08      0.10      0.12   ...     0.17      0.01      0.06      0.12      0.19  
+    0.01      0.02      0.15      0.12      0.14   ...     0.15      0.02      0.08      0.11      0.09  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    0.12      0.10      0.13      0.16      0.12   ...     0.12      0.06      0.03      0.12      0.17  
+    0.08      0.09      0.01      0.01      0.02   ...     0.17      0.03      0.03      0.13      0.18  
+    0.08      0.08      0.06      0.06      0.11   ...     0.18      0.13      0.11      0.17      0.11  
+    0.16      0.13      0.09      0.14      0.07   ...     0.00      0.08      0.07      0.12      0.17  
+    0.13      0.14      0.13      0.14      0.05   ...     0.09      0.19      0.17      0.12      0.12  
+B = 
+   -0.13     -0.01     -0.22     -0.03      0.06   ...     0.27     -0.06      0.00      0.24      0.34  
+   -0.15      0.01      0.26      0.22      0.00   ...     0.04     -0.08      0.08      0.26      0.10  
+   -0.18     -0.02      0.11      0.22      0.07   ...     0.08     -0.20      0.15      0.02      0.03  
+   -0.05      0.03      0.19      0.25      0.04   ...     0.23      0.04      0.23      0.17     -0.03  
+   -0.10      0.04      0.26      0.28      0.02   ...     0.45     -0.06      0.42      0.36      0.34  
+    ...       ...       ...       ...       ...    ...     ...       ...       ...       ...       ...   
+    0.06      0.00      0.09      0.00     -0.23   ...    -0.06      0.16      0.00      0.04     -0.03  
+   -0.04      0.12     -0.05      0.30     -0.27   ...    -0.06      0.11     -0.06     -0.29      0.01  
+   -0.12      0.35      0.09      0.41     -0.08   ...    -0.10      0.14     -0.03      0.12     -0.04  
+   -0.08     -0.19      0.11      0.11     -0.15   ...    -0.23      0.07     -0.09      0.00     -0.01  
+    0.02     -0.19      0.09      0.19     -0.23   ...    -0.06      0.07     -0.08      0.12     -0.07  
+Running Kernel (iteration 0).
+Running Kernel (iteration 1).
+Running Kernel (iteration 2).
+Running Kernel (iteration 3).
+Running Kernel (iteration 4).
+Running Kernel (iteration 5).
+Running Kernel (iteration 6).
+Running Kernel (iteration 7).
+Running Kernel (iteration 8).
+Running Kernel (iteration 9).
+Running Kernel (iteration 10).
+Running Kernel (iteration 11).
+Running Kernel (iteration 12).
+Running Kernel (iteration 13).
+Running Kernel (iteration 14).
+Running Kernel (iteration 15).
+Running Kernel (iteration 16).
+Running Kernel (iteration 17).
+Running Kernel (iteration 18).
+Running Kernel (iteration 19).
+Verifying against reference matmul (last iteration) ...
+First 4 elements of CRef: -2.64 3.06 5.78 7.66 
+First 4 elements of CVec: -2.83 2.84 5.53 7.38 
+
+Avg NPU matmul time: 565.25us.
+Avg NPU gflops: 7598.35
+
+Min NPU matmul time: 561.00us.
+Max NPU gflops: 7655.91
+
+Max NPU matmul time: 573.00us.
+Min NPU gflops: 7495.58
+
+PASS!
+
