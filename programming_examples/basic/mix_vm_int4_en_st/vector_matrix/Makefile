@@ -15,8 +15,8 @@ targetname=vector_matrix
 # in source at <targetname>.py as well as here
 # GEVM: M=1 (always), K is reduction dim, N is output dim
 M?=1
-K?=4096
-N?=14336
+K?=8192
+N?=8192
 k?=128
 n?=64
 
@@ -48,6 +48,6 @@ include ${SELF_DIR}../makefile-common
 # variant.
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
 
-build/vm_${n}x${k}.o: ${kernels_dir}/vm_mix_int4_r16.cc
+build/vm_${n}x${k}.o: ${kernels_dir}/vm_mix_int4_64x8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}

@@ -92,7 +92,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
     for (unsigned i = 0; i < colA; ++i) chess_prepare_for_pipelining chess_loop_range(4, ) {
       for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {
         // Load quantized int8 weights
-        aie::vector<T_in_B, MMUL::size_B> B_quantized;
+        aie::vector<int8, MMUL::size_B> B_quantized;
         if constexpr (b_row_maj) {
           B_quantized = aie::load_v<MMUL::size_B>(pB_quantized + (i * colB + j) * MMUL::size_B);
         } else {
@@ -100,14 +100,14 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
         }
         
         // Load scaling factors
-        aie::vector<T_in_B, 16> Bs_row = aie::load_v<16>(pBs_b + i * 16);
-        aie::vector<T_in_A, 8> Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
-        aie::vector<T_in_A, MMUL::size_B> Bs = aie::transpose(Bs_row_cast.template grow_replicate<MMUL::size_B>(), t, s);
+        const bfloat16 *pBs_bf16 = reinterpret_cast<const bfloat16*>(pBs_b);
+        aie::vector<bfloat16, 8> Bs_row_bf16 = aie::load_v<8>(pBs_bf16 + i * 8);
+        aie::vector<bfloat16, MMUL::size_B> Bs = aie::transpose(Bs_row_bf16.template grow_replicate<MMUL::size_B>(), t, s);
         
         // Dequantize: cast int8 to bf16 and apply scaling
-        aie::vector<T_in_A, MMUL::size_B> B_dequantized = aie::to_float<T_in_A>(B_quantized);
+        aie::vector<bfloat16, MMUL::size_B> B_dequantized = aie::to_float<T_in_A>(B_quantized);
         auto B_scaled = aie::mul(B_dequantized, Bs);
-        aie::vector<T_in_A, MMUL::size_B> B_final = aie::to_vector<T_in_A>(B_scaled);
+        aie::vector<bfloat16, MMUL::size_B> B_final = aie::to_vector<T_in_A>(B_scaled);
         
         // Store dequantized values in b_buf
         aie::store_v(b_buf + (i * colB + j) * MMUL::size_B, B_final);
@@ -266,20 +266,20 @@ matmul_vectorized_8x8x8_bf16_bf16(const bfloat16 *__restrict pA,
 
   // After extensive experimentation, the 8x8x8 aie::mmul size was found to be
   // optimal for AIE2P, in combination with the 2x2 mmul expanded kernel
-  constexpr int r = 8;
-  constexpr int s = 8;
-  constexpr int t = 8;
+  // constexpr int r = 8;
+  // constexpr int s = 8;
+  // constexpr int t = 8;
 
-  // Since the kernel has been expanded 2 times for both A ('m' dimension) and B
-  // ('n' dimension), the following assertions veirify this even division for
-  // the single AIE MatMul dimensionality Notice that 'k' dimension is not
-  // spatially expanded.
-  static_assert(m % (2 * r) == 0); // 'm' dimension
-  static_assert(k % s == 0);       // 'k' dimension
-  static_assert(n % (2 * t) == 0); // 'n' dimension
+  // // Since the kernel has been expanded 2 times for both A ('m' dimension) and B
+  // // ('n' dimension), the following assertions veirify this even division for
+  // // the single AIE MatMul dimensionality Notice that 'k' dimension is not
+  // // spatially expanded.
+  // static_assert(m % (2 * r) == 0); // 'm' dimension
+  // static_assert(k % s == 0);       // 'k' dimension
+  // static_assert(n % (2 * t) == 0); // 'n' dimension
 
-  return matmul_vectorized_2x2_mmul<bfloat16, int8, bfloat16, (m / r), (k / s),
-                                    (n / t), r, s, t, is_b_row_maj>(pA, pB, pC);
+  // return matmul_vectorized_2x2_mmul<bfloat16, int8, bfloat16, (m / r), (k / s),
+  //                                   (n / t), r, s, t, is_b_row_maj>(pA, pB, pC);
 }
 
 // bf16 MatMul kernel definion with fp32 outputs.

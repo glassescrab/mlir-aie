@@ -85,49 +85,6 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
     }
   }
 
-// for 8x16 large tile
-
-
-//   const unsigned colA = k / s;      // k / 8 (number of row tiles)
-//   const unsigned colB = n / r;      // n / 16 (number of column tiles)
-//   const unsigned size_B = s * r;    // 8 * 16 = 128 (elements per small tile)
-//   const unsigned half_r = r / 2;    // 8
-//   for (unsigned i = 0; i < colA; ++i) chess_prepare_for_pipelining chess_loop_range(4, ) {
-//     for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {
-//       // Process left half of 8x16 tile (8x8 block)
-//       {
-//         aie::vector<T_in_B, 64> B_quantized_left;
-//         B_quantized_left = aie::load_v<64>(pB_quantized + (i * colB + j) * size_B);
-        
-//         aie::vector<T_in_B, 16> Bs_row = aie::load_v<16>(pBs_b + i * 16);
-//         aie::vector<T_in_A, 8> Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
-//         aie::vector<T_in_A, 64> Bs_left = aie::transpose(Bs_row_cast.template grow_replicate<64>(), 8, 8);
-        
-//         aie::vector<T_in_A, 64> B_dequantized_left = aie::to_float<T_in_A>(B_quantized_left);
-//         auto B_scaled_left = aie::mul(B_dequantized_left, Bs_left);
-//         aie::vector<T_in_A, 64> B_final_left = aie::to_vector<T_in_A>(B_scaled_left);
-        
-//         aie::store_v(b_buf + (i * colB + j) * size_B, B_final_left);
-//       }
-      
-//       // Process right half of 8x16 tile (8x8 block)
-//       {
-//         aie::vector<T_in_B, 64> B_quantized_right;
-//         B_quantized_right = aie::load_v<64>(pB_quantized + (i * colB + j) * size_B + 64);
-        
-//         aie::vector<T_in_B, 16> Bs_row = aie::load_v<16>(pBs_b + i * 16);
-//         aie::vector<T_in_A, 8> Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
-//         aie::vector<T_in_A, 64> Bs_right = aie::transpose(Bs_row_cast.template grow_replicate<64>(), 8, 8);
-        
-//         aie::vector<T_in_A, 64> B_dequantized_right = aie::to_float<T_in_A>(B_quantized_right);
-//         auto B_scaled_right = aie::mul(B_dequantized_right, Bs_right);
-//         aie::vector<T_in_A, 64> B_final_right = aie::to_vector<T_in_A>(B_scaled_right);
-        
-//         aie::store_v(b_buf + (i * colB + j) * size_B + 64, B_final_right);
-//       }
-//     }
-//   }
-
   T_out *__restrict c_ptr = c;
 
   AIE_LOOP_MIN_ITERATION_COUNT(n / r)
@@ -183,7 +140,7 @@ extern "C" {
 #endif
 
 #ifndef DIM_K
-#define DIM_K 64  // Reduction dimension tile size (k)
+#define DIM_K 128  // Reduction dimension tile size (k)
 #endif
 
 #define combos(X)                                                              \

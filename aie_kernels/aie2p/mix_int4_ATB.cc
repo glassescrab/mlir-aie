@@ -103,16 +103,6 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
       for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {
         // Load quantized int8 weights
         aie::vector<int8, 32> B_quantized;
-        aie::vector<uint4, MMUL::size_B> B_uint4;
-        aie::vector<uint8, MMUL::size_B> B_uint8;
-        aie::vector<int8, MMUL::size_B> B_int8;
-        aie::vector<int8, MMUL::size_B> B_int8_zeroed;
-        aie::vector<bfloat16, MMUL::size_B> B_float;
-        aie::vector<int8, 16> Bs_row;
-        aie::vector<bfloat16, 8> Bs_row_cast;
-        aie::vector<bfloat16, MMUL::size_B> Bs;
-        aie::vector<int8, 16> Bzp_row;
-        aie::vector<int8, MMUL::size_B> Bzp;
         if constexpr (b_row_maj) {
           B_quantized = aie::load_v<32>(pB_quantized + (i * colB + j) * MMUL::size_B / 2);
         } else {
@@ -120,7 +110,6 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
         }
 
         // Load scaling factors - Use j (N-dim) because Scales are Per-Column.
-        // Load loading factors
         // We cast to bfloat16* to load values directly.
         // Pointer arithmetic: (bfloat16*)ptr + k. Advances k * 2 bytes.
         // We want offset j * 16 bytes.
@@ -129,22 +118,22 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
         aie::vector<bfloat16, 8> Bs_row_bf16 = aie::load_v<8>(pBs_bf16 + j * 8);
         // grow_replicate duplicates the vector to fill the tile. 
         // Without transpose, we get [S0..S7, S0..S7...] matching Row-Major Per-Column scaling.
-        Bs = Bs_row_bf16.template grow_replicate<MMUL::size_B>();
+        aie::vector<bfloat16, MMUL::size_B> Bs = Bs_row_bf16.template grow_replicate<MMUL::size_B>();
         
         // Load zero point values
-        Bzp_row = aie::load_v<16>(pBzp_b + j * 16);
-        Bzp = Bzp_row.template grow_replicate<MMUL::size_B>();
-
+        aie::vector<int8, 16> Bzp_row = aie::load_v<16>(pBzp_b + j * 16);
+        aie::vector<int8, MMUL::size_B> Bzp = Bzp_row.template grow_replicate<MMUL::size_B>();
 
         // Dequantize: cast int8 to bf16 and apply scaling
-        B_uint4 = B_quantized.template cast_to<uint4>();
-        B_uint8 = B_uint4.template unpack();
-        B_int8 = B_uint8.template cast_to<int8>();
+        aie::vector<uint4, MMUL::size_B> B_uint4 = B_quantized.template cast_to<uint4>();
+        aie::vector<uint8, MMUL::size_B> B_uint8 = B_uint4.template unpack();
+        aie::vector<int8, MMUL::size_B> B_int8 = B_uint8.template cast_to<int8>();
         
         // Subtraction: Weighted Int8 - ZeroPoint Int8
-        B_int8_zeroed = aie::sub(B_int8, Bzp);
-        
-        B_float = aie::to_float<bfloat16>(B_int8_zeroed);
+        aie::vector<int8, MMUL::size_B> B_int8_zeroed = aie::sub(B_int8, Bzp);
+        aie::vector<bfloat16, MMUL::size_B> B_float = aie::to_float<bfloat16>(B_int8_zeroed);
+
+        // Scaling: Apply scaling factor
         auto B_scaled = aie::mul(B_float, Bs);
         aie::vector<T_in_A, MMUL::size_B> B_final = aie::to_vector<T_in_A>(B_scaled);
         
@@ -432,7 +421,7 @@ extern "C" {
 #endif
 
 #ifndef DIM_K
-#define DIM_K 64
+#define DIM_K 128
 #endif
 
 #ifndef DIM_N

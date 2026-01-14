@@ -80,9 +80,9 @@ int main(int argc, const char *argv[]) {
   srand(1726250518); 
   // srand(time(NULL));
   
-  n_warmup_iterations = 4;
-  n_iterations = 16; 
-  do_verify = 0;
+  n_warmup_iterations = 16;
+  n_iterations = 1; 
+  do_verify = 1;
   verbosity = 2;
 
   int M = vm["M"].as<int>();

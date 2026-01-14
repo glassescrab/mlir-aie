@@ -129,8 +129,8 @@ def my_matmul(
     n_aie_cores = n_aie_rows * n_aie_cols
 
     DIV = 2
-    mtk = 512
-    ktn = 512
+    mtk = 128
+    ktn = 64
 
     dtype_in = dtype_map[dtype_in_str]
     dtype_in_B = dtype_map[dtype_in_B_str]

@@ -71,8 +71,11 @@ int main(int argc, const char *argv[]) {
   int trace_size = vm["trace_sz"].as<int>();
   int b_col_maj = vm["b_col_maj"].as<int>();
 
+  n_warmup_iterations = 16;
+  n_iterations = 32; 
   do_verify = 0;
-  // Fix the seed to ensure reproducibility in CI.
+  verbosity = 2;  
+
   srand(1726250518); // srand(time(NULL));
 
   int M = vm["M"].as<int>();

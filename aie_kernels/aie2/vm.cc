@@ -139,7 +139,7 @@ extern "C" {
                                  mlir_type_out, ctype_acc)                     \
   void vecmat_vectorized_##mlir_type_in##_##mlir_type_out(                     \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    vecmat_vectorized<ctype_in, ctype_out, ctype_acc, DIM_N, DIM_K, 16, 8>(    \
+    vecmat_vectorized<ctype_in, ctype_out, ctype_acc, DIM_N, DIM_K, 32, 8>(    \
         a_in, b_in, c_out);                                                    \
   }
 
