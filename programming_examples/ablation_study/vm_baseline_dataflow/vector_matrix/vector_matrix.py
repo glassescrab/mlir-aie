@@ -25,8 +25,8 @@ def my_matmul(dev, N, K):
     m = 1  # Always 1 for GEVM (vector output, not matrix)
     k = 128 # Reduction dimension tile size
     n = 64 # Output dimension tile size
-    nxk = 64  # Tile block size for B transformation, assume B is col-major KxN
-    nxk_div_n = nxk // n
+    # nxk = 64  # Tile block size for B transformation, assume B is col-major KxN
+    # nxk_div_n = nxk // n
 
     n_cols = 8
     n_rows = 4
@@ -64,7 +64,7 @@ def my_matmul(dev, N, K):
         def device_body():
             # GEVM: A is vector, B is matrix (needs transformation)
             inA_ty = np.ndarray[(k,), np.dtype[dtype_in]]
-            inB_ty = np.ndarray[(n * nxk_div_n * n_rows, k), np.dtype[dtype_in]]
+            inB_ty = np.ndarray[(n * n_rows, k), np.dtype[dtype_in]]
             MemC_ty = np.ndarray[(n * n_rows,), np.dtype[dtype_out]]
             outC_ty = np.ndarray[(n,), np.dtype[dtype_out]]
             B_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
@@ -170,7 +170,7 @@ def my_matmul(dev, N, K):
                     memB_fifos[col], 
                     [inB_fifos[row][col] for row in range(n_rows)],
                     [],
-                    [n * nxk * j for j in range(n_rows)],
+                    [n * k * j for j in range(n_rows)],
                 )
 
             # Set up compute tiles
@@ -226,8 +226,8 @@ def my_matmul(dev, N, K):
                             B_offset = B_base_offset + B_col_offset
                             # B_sizes = [1, K // nxk, n_rows * n, nxk]
                             # B_strides = [0, nxk, K, 1]
-                            B_sizes = [n_rows, K // nxk, n, nxk]
-                            B_strides = [K * n, nxk * n, nxk, 1]                            
+                            B_sizes = [n_rows, K // k, n, k]
+                            B_strides = [K * n, k * n, k, 1]                            
                             npu_dma_memcpy_nd(
                                 metadata=memB_fifos[col],
                                 bd_id=bd_id_base + 1,
