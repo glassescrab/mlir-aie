@@ -120,8 +120,8 @@ def my_matmul(
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
-    mtk = 512
-    ktn = 512
+    mtk = 128
+    ktn = 128
     DIV = 4
 
     dtype_in = str_to_dtype(dtype_in_str)
@@ -640,14 +640,14 @@ def my_matmul(
                             #     |0011    0011    |
                             #      ----------------
                             B_col_offset = col * n if not b_col_maj else col * n * K
-                            if not b_col_maj:
-                                B_sizes = [N // n // n_aie_cols, K // k, k, n]
-                                B_strides = [n * n_aie_cols, k * N, N, 1]
-                            else:
-                                B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
-                                B_strides = [n * n_aie_cols * K, ktn, K, 1]
-                            # B_sizes = [N // n // n_aie_cols, K // k, n, k]
-                            # B_strides = [K * n * n_aie_cols, k * n, k, 1]
+                            # if not b_col_maj:
+                            #     B_sizes = [N // n // n_aie_cols, K // k, k, n]
+                            #     B_strides = [n * n_aie_cols, k * N, N, 1]
+                            # else:
+                            #     B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
+                            #     B_strides = [n * n_aie_cols * K, ktn, K, 1]
+                            B_sizes = [N // n // n_aie_cols * 4, K // k // 4, n, k]
+                            B_strides = [K * n * n_aie_cols // 4, k * n, k, 1]
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col],
                                 bd_id=bd_id_base + 2 * tile_row + 2,

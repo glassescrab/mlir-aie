@@ -18,12 +18,12 @@ K?=2048
 N?=2048
 
 # m, k, n: single AIE core GEMM dimensions
-m?=128
-k?=64
+m?=64
+k?=128
 n?=64
 
 n_aie_cols?=8
-b_col_maj?=1
+b_col_maj?=0
 c_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}

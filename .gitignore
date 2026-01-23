@@ -14,7 +14,7 @@ __pycache__
 **.cmake
 include/**/Makefile
 lib/**/Makefile
-
+xdna-driver
 
 /platforms/vck190_bare/petalinux/build
 /platforms/vck190_bare/petalinux/components
