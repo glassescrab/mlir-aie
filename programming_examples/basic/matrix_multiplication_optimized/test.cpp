@@ -68,7 +68,8 @@ int main(int argc, const char *argv[]) {
   int trace_size = vm["trace_sz"].as<int>();
   int b_col_maj = vm["b_col_maj"].as<int>();
   int c_col_maj = vm["c_col_maj"].as<int>();
-
+  // do_verify = false;
+  // n_iterations = 1;
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
 
@@ -164,15 +165,15 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    AVec[i] = 1;
-    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
+    // AVec[i] = 1;
+    AVec[i] = matmul_common::get_random<A_DATATYPE>();
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    BVec[i] = 1;
-    // BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
+    // BVec[i] = 1;
+    BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
     // Diagonal:
     // if(i % N == i / N) {
     //   BVec[i] = 1.0;

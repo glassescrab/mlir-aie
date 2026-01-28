@@ -504,66 +504,66 @@ def my_matmul(
                     if tb_n_rows <= 0:
                         # for small input sizes, we may not even need a "pong" iteration
                         break
-                    for col in range(n_aie_cols):
+                    
+                    for tile_row in range(tb_n_rows):
+                        for col in range(n_aie_cols):
 
-                        # C Output Transfer:
-                        # The smallest transfer unit is a (m*n_aie_rows)-x-(n)-sized sub-tile of the matrix.
-                        # Transfer one such tile for every (n_aie_cols)-th column, evenly spaced,
-                        # then repeat that (tb_n_rows) times for the next contiguous blocks of rows.
-                        # Each shim will start at a different column offset, transferring interleaved
-                        # columns. For example, shim 0 may transfer the blocks marked 0 below, and shim 1
-                        # may transfer the blocks marked 1.
-                        #
-                        #             N
-                        #      ----------------
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        #     |0011    0011    |
-                        # M   |0011    0011    |
-                        #     |                |
-                        #     |                |
-                        #     |                |
-                        #     |                |
-                        #      ----------------
-                        if not c_col_maj:
-                            C_row_offset = row_base * m * n_aie_rows * N
-                            C_col_offset = col * n
-                            C_offset = C_col_offset + C_row_offset
-                            C_sizes = [
-                                tb_n_rows,
-                                N // n // n_aie_cols,
-                                m * n_aie_rows,
-                                n,
-                            ]
-                            C_strides = [m * n_aie_rows * N, n * n_aie_cols, N, 1]
-                        else:
-                            C_row_offset = row_base * m * n_aie_rows
-                            C_col_offset = col * n * M
-                            C_offset = C_col_offset + C_row_offset
-                            C_sizes = [N // n // n_aie_cols, n_aie_rows, n, m]
-                            C_strides = [M * n * n_aie_cols, m, M, 1]
-                        npu_dma_memcpy_nd(
-                            metadata=C_l2l3_fifos[col],
-                            bd_id=bd_id_base,
-                            mem=C,
-                            offsets=[0, 0, 0, C_offset],
-                            sizes=C_sizes,
-                            strides=C_strides,
-                        )
-                        # Use the calculated sizes/strides/offsets to record the data movement
-                        # caused by the above call to npu_dma_memcpy_nd.
-                        # This line does not change MLIR output at all.
-                        if generate_taps:
-                            C_taps.append(
-                                TensorAccessPattern(
-                                    (M, N),
-                                    offset=C_offset,
-                                    sizes=C_sizes,
-                                    strides=C_strides,
-                                )
+                            # C Output Transfer:
+                            # The smallest transfer unit is a (m*n_aie_rows)-x-(n)-sized sub-tile of the matrix.
+                            # Transfer one such tile for every (n_aie_cols)-th column, evenly spaced,
+                            # then repeat that (tb_n_rows) times for the next contiguous blocks of rows.
+                            # Each shim will start at a different column offset, transferring interleaved
+                            # columns. For example, shim 0 may transfer the blocks marked 0 below, and shim 1
+                            # may transfer the blocks marked 1.
+                            #
+                            #             N
+                            #      ----------------
+                            #     |0011    0011    |
+                            #     |0011    0011    |
+                            #     |0011    0011    |
+                            # M   |0011    0011    |
+                            #     |                |
+                            #     |                |
+                            #     |                |
+                            #     |                |
+                            #      ----------------
+                            if not c_col_maj:
+                                C_row_offset = (row_base + tile_row) * m * n_aie_rows * N
+                                C_col_offset = col * n
+                                C_offset = C_col_offset + C_row_offset
+                                C_sizes = [
+                                    1,
+                                    N // n // n_aie_cols,
+                                    m * n_aie_rows,
+                                    n,
+                                ]
+                                C_strides = [0, n * n_aie_cols, N, 1]
+                            else:
+                                C_row_offset = (row_base + tile_row) * m * n_aie_rows
+                                C_col_offset = col * n * M
+                                C_offset = C_col_offset + C_row_offset
+                                C_sizes = [N // n // n_aie_cols, n_aie_rows, n, m]
+                                C_strides = [M * n * n_aie_cols, m, M, 1]
+                            npu_dma_memcpy_nd(
+                                metadata=C_l2l3_fifos[col],
+                                bd_id=bd_id_base + 3 * tile_row,
+                                mem=C,
+                                offsets=[0, 0, 0, C_offset],
+                                sizes=C_sizes,
+                                strides=C_strides,
                             )
-
-                        for tile_row in range(tb_n_rows):
+                            # Use the calculated sizes/strides/offsets to record the data movement
+                            # caused by the above call to npu_dma_memcpy_nd.
+                            # This line does not change MLIR output at all.
+                            if generate_taps:
+                                C_taps.append(
+                                    TensorAccessPattern(
+                                        (M, N),
+                                        offset=C_offset,
+                                        sizes=C_sizes,
+                                        strides=C_strides,
+                                    )
+                                )
 
                             # A input transfer:
                             #
@@ -602,7 +602,7 @@ def my_matmul(
                             if col < n_aie_rows:
                                 npu_dma_memcpy_nd(
                                     metadata=A_l3l2_fifos[col],
-                                    bd_id=bd_id_base + 2 * tile_row + 1,
+                                    bd_id=bd_id_base + 3 * tile_row + 1,
                                     mem=A,
                                     offsets=[0, 0, 0, A_offset],
                                     sizes=A_sizes,
@@ -640,17 +640,17 @@ def my_matmul(
                             #     |0011    0011    |
                             #      ----------------
                             B_col_offset = col * n if not b_col_maj else col * n * K
-                            # if not b_col_maj:
-                            #     B_sizes = [N // n // n_aie_cols, K // k, k, n]
-                            #     B_strides = [n * n_aie_cols, k * N, N, 1]
-                            # else:
-                            #     B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
-                            #     B_strides = [n * n_aie_cols * K, ktn, K, 1]
-                            B_sizes = [N // n // n_aie_cols * 4, K // k // 4, n, k]
-                            B_strides = [K * n * n_aie_cols // 4, k * n, k, 1]
+                            if not b_col_maj:
+                                B_sizes = [N // n // n_aie_cols, K // k, k, n]
+                                B_strides = [n * n_aie_cols, k * N, N, 1]
+                            else:
+                                B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
+                                B_strides = [n * n_aie_cols * K, ktn, K, 1]
+                            # B_sizes = [N // n // n_aie_cols, K // k, n, k]
+                            # B_strides = [K * n * n_aie_cols, k * n, k, 1]
                             npu_dma_memcpy_nd(
                                 metadata=B_l3l2_fifos[col],
-                                bd_id=bd_id_base + 2 * tile_row + 2,
+                                bd_id=bd_id_base + 3 * tile_row + 2,
                                 mem=B,
                                 offsets=[0, 0, 0, B_col_offset],
                                 sizes=B_sizes,
@@ -668,8 +668,8 @@ def my_matmul(
                                         strides=B_strides,
                                     )
                                 )
-                    if tb > 0 or (tb == 0 and pingpong > 0):
-                        dma_wait(*C_l2l3_fifos)
+                        if not (tb == 0 and pingpong == 0 and tile_row == 0):
+                            dma_wait(*C_l2l3_fifos)
             dma_wait(*C_l2l3_fifos)
 
     if generate_taps:
