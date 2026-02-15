@@ -13,9 +13,9 @@ targetname=whole_array
 
 
 # M, K, N: final GEMM dimensions
-M?=4096
-K?=4096
-N?=16384
+M?=2048
+K?=16384
+N?=2048
 
 # m, k, n: single AIE core GEMM dimensions
 m?=64
@@ -23,7 +23,7 @@ k?=128
 n?=64
 
 n_aie_cols?=8
-b_col_maj?=0
+b_col_maj?=1
 c_col_maj?=0
 
 kernels=mm_${m}x${k}x${n}

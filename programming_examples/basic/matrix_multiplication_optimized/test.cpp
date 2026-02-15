@@ -77,7 +77,7 @@ int main(int argc, const char *argv[]) {
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
 
-  do_verify = false;
+  do_verify = true;
 
   bool do_verify_stochastic =
       (long long)M * N * K > verify_stochastic_threshold;

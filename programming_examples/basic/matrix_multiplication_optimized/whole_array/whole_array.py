@@ -120,8 +120,8 @@ def my_matmul(
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
-    mtk = 128
-    ktn = 128
+    mtk = 512
+    ktn = 512
     DIV = 4
 
     dtype_in = str_to_dtype(dtype_in_str)
@@ -646,6 +646,25 @@ def my_matmul(
                             else:
                                 B_sizes = [N // n // n_aie_cols, K // ktn, n, ktn]
                                 B_strides = [n * n_aie_cols * K, ktn, K, 1]
+                                # For larger-K col-major B, this alternative traversal
+                                # avoids DMA stride encoding failures (e.g. K > 4096).
+                                if K > 4096:
+                                    colmaj_split = ktn // k
+                                    assert (
+                                        (K // k) % colmaj_split == 0
+                                    ), "K//k must be divisible by ktn//k for col-major B split"
+                                    B_sizes = [
+                                        N // n // n_aie_cols * colmaj_split,
+                                        K // k // colmaj_split,
+                                        n,
+                                        k,
+                                    ]
+                                    B_strides = [
+                                        n * n_aie_cols * K // colmaj_split,
+                                        k * n,
+                                        k,
+                                        1,
+                                    ]
                             # B_sizes = [N // n // n_aie_cols, K // k, n, k]
                             # B_strides = [K * n * n_aie_cols, k * n, k, 1]
                             npu_dma_memcpy_nd(

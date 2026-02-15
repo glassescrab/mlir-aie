@@ -1,0 +1,79 @@
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 1  --dev npu2 -M 256 -K 1280 -N 3584 --dtype_in bf16 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_256x1280x3584_64x128x64_8c.mlir
+mkdir -p build
+cd build && xchesscc_wrapper aie2p -I /home/greg/libraries/vitis_aie_essentials/include -Dbf16_bf16_ONLY -DDIM_M=64 -DDIM_K=128 -DDIM_N=64 -DB_COL_MAJ -DVECTORIZED_ONLY -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 -c /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/../../../../aie_kernels/aie2p/mm_optimized.cc -o mm_64x128x64.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-xclbin --no-compile-host --xclbin-name=final_256x1280x3584_64x128x64_8c.xclbin \
+			 \
+			--aie-generate-npu-insts --npu-insts-name=insts_256x1280x3584_64x128x64_8c.txt ../build/aie_256x1280x3584_64x128x64_8c.mlir
+
+rm -rf _build
+mkdir -p _build
+cd _build &&  cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=std::bfloat16_t -DDTYPE_OUT=std::bfloat16_t -DDTYPE_ACC=float" \
+	cmake `echo /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/..` -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=whole_array -Dsubdir=whole_array
+-- The C compiler identification is GNU 13.3.0
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc-13 - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++-13 - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build
+cd _build &&  cmake --build . --config Release
+gmake[1]: Entering directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+gmake[2]: Entering directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+gmake[3]: Entering directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+gmake[3]: Leaving directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+gmake[3]: Entering directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+[ 50%] Building CXX object CMakeFiles/whole_array.dir/whole_array/test.cpp.o
+[100%] Linking CXX executable whole_array
+gmake[3]: Leaving directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+[100%] Built target whole_array
+gmake[2]: Leaving directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+gmake[1]: Leaving directory '/home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/_build'
+cp _build/whole_array whole_array.exe 
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 1  --dev npu2 -M 256 -K 1280 -N 1280 --dtype_in bf16 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_256x1280x1280_64x128x64_8c.mlir
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 1  --dev npu2 -M 256 -K 1280 -N 3584 --dtype_in bf16 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_256x1280x3584_64x128x64_8c.mlir
+mkdir -p build
+cd build && xchesscc_wrapper aie2p -I /home/greg/libraries/vitis_aie_essentials/include -Dbf16_bf16_ONLY -DDIM_M=64 -DDIM_K=128 -DDIM_N=64 -DB_COL_MAJ -DVECTORIZED_ONLY -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 -c /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/../../../../aie_kernels/aie2p/mm_optimized.cc -o mm_64x128x64.o
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-xclbin --no-compile-host --xclbin-name=final_256x1280x3584_64x128x64_8c.xclbin \
+			 \
+			--aie-generate-npu-insts --npu-insts-name=insts_256x1280x3584_64x128x64_8c.txt ../build/aie_256x1280x3584_64x128x64_8c.mlir
+
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 1  --dev npu2 -M 256 -K 1280 -N 4352 --dtype_in bf16 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_256x1280x4352_64x128x64_8c.mlir
+make: Nothing to be done for 'all'.
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 1  --dev npu2 -M 256 -K 1280 -N 1024 --dtype_in bf16 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_256x1280x1024_64x128x64_8c.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-xclbin --no-compile-host --xclbin-name=final_256x1280x1024_64x128x64_8c.xclbin \
+			 \
+			--aie-generate-npu-insts --npu-insts-name=insts_256x1280x1024_64x128x64_8c.txt ../build/aie_256x1280x1024_64x128x64_8c.mlir
+
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 1  --dev npu2 -M 256 -K 1280 -N 4096 --dtype_in bf16 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_256x1280x4096_64x128x64_8c.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-xclbin --no-compile-host --xclbin-name=final_256x1280x4096_64x128x64_8c.xclbin \
+			 \
+			--aie-generate-npu-insts --npu-insts-name=insts_256x1280x4096_64x128x64_8c.txt ../build/aie_256x1280x4096_64x128x64_8c.mlir
+
+mkdir -p build
+python3 /home/greg/Desktop/mlir-aie-memopt/programming_examples/basic/matrix_multiplication_optimized/whole_array/whole_array.py -m 64 -k 128 -n 64 --n-aie-cols 8 --b-col-maj 1  --dev npu2 -M 256 -K 4352 -N 1024 --dtype_in bf16 --dtype_out bf16 --emulate-bf16-mmul-with-bfp16 true --trace_size 0 > build/aie_256x4352x1024_64x128x64_8c.mlir
+mkdir -p build
+cd build && aiecc.py --alloc-scheme=basic-sequential --aie-generate-xclbin --no-compile-host --xclbin-name=final_256x4352x1024_64x128x64_8c.xclbin \
+			 \
+			--aie-generate-npu-insts --npu-insts-name=insts_256x4352x1024_64x128x64_8c.txt ../build/aie_256x4352x1024_64x128x64_8c.mlir
+Error running pass pipeline:  builtin.module(convert-vector-to-aievec{ aie-target=aie2p target-backend=llvmir },lower-affine,aie-canonicalize-device,aie.device(aie-assign-lock-ids,aie-register-objectFifos,aie-objectFifo-stateful-transform{ dynamic-objFifos=0 packet-sw-objFifos=0 },aie-assign-bd-ids,aie-lower-cascade-flows,aie-lower-broadcast-packet,aie-lower-multicast,aie-assign-tile-controller-ids,aie-generate-column-control-overlay{ route-shim-to-tile-ctrl=0 },aie-assign-buffer-addresses{ alloc-scheme=basic-sequential }),convert-scf-to-cf) Failure while executing pass pipeline:
+error: "-":1452:7: 'aiex.npu.dma_memcpy_nd' op Stride 3 exceeds the [1:1048576] range.
+ note: "-":1452:7: see current operation: "aiex.npu.dma_memcpy_nd"(%arg1) <{id = 2 : i64, metadata = @B_L3L2_0, operandSegmentSizes = array<i32: 1, 0, 0, 0>, static_offsets = array<i64: 0, 0, 0, 0>, static_sizes = array<i64: 2, 17, 64, 256>, static_strides = array<i64: 2228224, 256, 4352, 1>}> : (memref<4456448xbf16>) -> ()
+
