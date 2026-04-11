@@ -13,7 +13,7 @@ targetname=whole_array
 
 
 # M, K, N: final GEMM dimensions
-M?=2048
+M?=512
 K?=16384
 N?=2048
 
@@ -61,6 +61,7 @@ aie_py_src=${targetname}_iron.py
 endif
 
 KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+host_defines+=-DWHOLE_ARRAY_BCOL_MAJ_SPLIT_LAYOUT -DWHOLE_ARRAY_TILE_K=${k} -DWHOLE_ARRAY_TILE_N=${n} -DWHOLE_ARRAY_N_AIE_COLS=${n_aie_cols}
 ifeq (${b_col_maj}, 1)
 	KERNEL_DEFINES+=-DB_COL_MAJ
 endif

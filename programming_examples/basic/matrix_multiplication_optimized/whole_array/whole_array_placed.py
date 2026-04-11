@@ -167,6 +167,27 @@ def my_matmul(
     # loop unrollings. Reducing the depth to 1 here will work around that at
     # a big performance cost.
     fifo_depth = 2
+    core_stack_size = 0xD00
+    aie_tile_mem_bytes = 64 * 1024
+    a_l1_bytes = m * k * np.dtype(dtype_in).itemsize
+    b_l1_bytes = k * n * np.dtype(dtype_in).itemsize
+    c_l1_bytes = m * n * np.dtype(dtype_out).itemsize
+    c_l1l2_fifo_depth = fifo_depth
+    core_local_bytes = (
+        core_stack_size
+        + fifo_depth * (a_l1_bytes + b_l1_bytes)
+        + c_l1l2_fifo_depth * c_l1_bytes
+    )
+    if core_local_bytes > aie_tile_mem_bytes:
+        c_l1l2_fifo_depth = 1
+        core_local_bytes = (
+            core_stack_size
+            + fifo_depth * (a_l1_bytes + b_l1_bytes)
+            + c_l1l2_fifo_depth * c_l1_bytes
+        )
+    assert (
+        core_local_bytes <= aie_tile_mem_bytes
+    ), "Compute-tile buffers exceed local memory even after flattening C_L1L2"
 
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
@@ -333,7 +354,7 @@ def my_matmul(
                     f"C_L1L2_{col}_{row}",
                     core_tiles[row][col],
                     mem_tiles[col],
-                    fifo_depth,
+                    c_l1l2_fifo_depth,
                     C_l1_ty,
                 )
             C_l2l3_fifos[col] = object_fifo(
@@ -364,7 +385,11 @@ def my_matmul(
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
 
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
+                @core(
+                    core_tiles[row][col],
+                    f"mm_{m}x{k}x{n}.o",
+                    stack_size=core_stack_size,
+                )
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (

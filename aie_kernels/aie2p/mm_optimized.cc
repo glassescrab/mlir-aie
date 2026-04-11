@@ -352,9 +352,19 @@ matmul_vectorized_8x8x8_bf16_f32(const bfloat16 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (2 * t) == 0);
 
-  return matmul_vectorized_2x2_mmul<bfloat16, float, (m / r), (k / s), (n / t),
-                                    r, s, t, is_b_row_maj, is_c_row_maj>(pA, pB,
-                                                                         pC);
+  // The optimized whole-array path feeds A in DIV row slices while
+  // accumulating into a full-sized C tile. Mirror the bf16->bf16 handling so
+  // each invocation updates only its quarter of the output rows.
+  pC += div_counter * m * n / DIV;
+  if (div_counter == DIV - 1) {
+    div_counter = 0;
+  } else {
+    div_counter = div_counter + 1;
+  }
+
+  return matmul_vectorized_2x2_mmul<bfloat16, float, (m / DIV / r), (k / s),
+                                    (n / t), r, s, t, is_b_row_maj,
+                                    is_c_row_maj>(pA, pB, pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>

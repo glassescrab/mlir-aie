@@ -165,15 +165,15 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    // AVec[i] = 1;
+    // AVec[i] = 0.02;
     AVec[i] = matmul_common::get_random<A_DATATYPE>();
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec(B_VOLUME);
   for (int i = 0; i < B_VOLUME; i++) {
-    // BVec[i] = 1;
-    BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
+    BVec[i] = 0.01;
+    // BVec[i] = matmul_common::get_random<B_DATATYPE>() * i;
     // Diagonal:
     // if(i % N == i / N) {
     //   BVec[i] = 1.0;
@@ -181,7 +181,44 @@ int main(int argc, const char *argv[]) {
     //   BVec[i] = 0.0;
     // }
   }
-  memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
+  std::vector<B_DATATYPE> BDeviceVec = BVec;
+#ifdef WHOLE_ARRAY_BCOL_MAJ_SPLIT_LAYOUT
+  if (b_col_maj && K > 4096) {
+    constexpr int tile_k = WHOLE_ARRAY_TILE_K;
+    constexpr int tile_n = WHOLE_ARRAY_TILE_N;
+    constexpr int n_aie_cols = WHOLE_ARRAY_N_AIE_COLS;
+    constexpr int ktn = 512;
+    static_assert(ktn % tile_k == 0);
+    const int colmaj_split = ktn / tile_k;
+    const int n_blocks = N / (tile_n * n_aie_cols);
+    const int k_blocks = K / tile_k;
+    const int packed_stride0 = tile_n * n_aie_cols * K / colmaj_split;
+    const int packed_stride1 = tile_k * tile_n;
+    BDeviceVec.assign(B_VOLUME, B_DATATYPE{});
+
+    for (int aie_col = 0; aie_col < n_aie_cols; ++aie_col) {
+      const int aie_col_offset = aie_col * tile_n * K;
+      const int col_base = aie_col * tile_n;
+      for (int n_block = 0; n_block < n_blocks; ++n_block) {
+        const int packed_n_base = n_block * packed_stride0;
+        const int logical_col_base = col_base + n_block * tile_n * n_aie_cols;
+        for (int k_block = 0; k_block < k_blocks; ++k_block) {
+          const int packed_base =
+              aie_col_offset + packed_n_base + k_block * packed_stride1;
+          const int logical_k_base = k_block * tile_k;
+          for (int j = 0; j < tile_n; ++j) {
+            const int logical_col = logical_col_base + j;
+            for (int kk = 0; kk < tile_k; ++kk) {
+              BDeviceVec[packed_base + j * tile_k + kk] =
+                  BVec[logical_k_base + kk + logical_col * K];
+            }
+          }
+        }
+      }
+    }
+  }
+#endif
+  memcpy(bufB, BDeviceVec.data(), (BDeviceVec.size() * sizeof(B_DATATYPE)));
 
   // Initialize outputs; bufOut is results matrix plus tracing info
   char *bufOut = bo_out.map<char *>();
