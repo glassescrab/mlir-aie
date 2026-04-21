@@ -123,6 +123,7 @@ def my_matmul(
     mtk = 512
     ktn = 512
     DIV = 4
+    max_npu_dma_stride = 1 << 20
 
     dtype_in = str_to_dtype(dtype_in_str)
     dtype_out = str_to_dtype(dtype_out_str)
@@ -523,6 +524,7 @@ def my_matmul(
             # We only transfer 4 rows of tiles at once before starting a new transfer block.
             # tb = transfer block; block of transfers before sync call
             tb_max_n_rows = 4 if not c_col_maj else 2
+            out_tasks = []
             for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
                 for pingpong in [0, 1]:
                     M // m // n_aie_rows // tb_max_n_rows
@@ -572,16 +574,53 @@ def my_matmul(
                             C_offset = C_col_offset + C_row_offset
                             C_sizes = [N // n // n_aie_cols, n_aie_rows, n, m]
                             C_strides = [M * n * n_aie_cols, m, M, 1]
-                        npu_dma_memcpy_nd(
-                            metadata=C_l2l3_fifos[col],
-                            bd_id=bd_id_base,
-                            mem=C,
-                            offsets=[0, 0, 0, C_offset],
-                            sizes=C_sizes,
-                            strides=C_strides,
+                        c_task = dma_configure_task_for(
+                            C_l2l3_fifos[col], issue_token=True
                         )
+                        split_c_task_bds = (
+                            not c_col_maj
+                            and C_sizes[0] > 1
+                            and (
+                                C_strides[0] * np.dtype(dtype_out).itemsize
+                                > 4 * max_npu_dma_stride
+                            )
+                        )
+                        with bds(c_task) as bd:
+                            c_row_group_sizes = [1, *C_sizes[1:]]
+                            c_row_group_len = int(np.prod(c_row_group_sizes[-3:]))
+                            if split_c_task_bds:
+                                for c_row_group in range(tb_n_rows):
+                                    with bd[c_row_group]:
+                                        dma_bd(
+                                            C,
+                                            offset=(
+                                                C_offset
+                                                + c_row_group * C_strides[0]
+                                            ),
+                                            len=c_row_group_len,
+                                            dimensions=list(
+                                                zip(c_row_group_sizes, C_strides)
+                                            ),
+                                            bd_id=bd_id_base + 5 + c_row_group,
+                                        )
+                                        if c_row_group + 1 < tb_n_rows:
+                                            next_bd(bd[c_row_group + 1])
+                                        else:
+                                            EndOp()
+                            else:
+                                with bd[0]:
+                                    dma_bd(
+                                        C,
+                                        offset=C_offset,
+                                        len=int(np.prod(C_sizes[-3:])),
+                                        dimensions=list(zip(C_sizes, C_strides)),
+                                        bd_id=bd_id_base + 5,
+                                    )
+                                    EndOp()
+                        dma_start_task(c_task)
+                        out_tasks.append(c_task)
                         # Use the calculated sizes/strides/offsets to record the data movement
-                        # caused by the above call to npu_dma_memcpy_nd.
+                        # caused by the above output DMA task configuration.
                         # This line does not change MLIR output at all.
                         if generate_taps:
                             C_taps.append(
@@ -721,8 +760,10 @@ def my_matmul(
                                     )
                                 )
                     if tb > 0 or (tb == 0 and pingpong > 0):
-                        dma_wait(*C_l2l3_fifos)
-            dma_wait(*C_l2l3_fifos)
+                        dma_await_task(*out_tasks)
+                        out_tasks = []
+            if len(out_tasks) > 0:
+                dma_await_task(*out_tasks)
 
     if generate_taps:
         # If generate_taps is true, return a representation of tensor tiles
