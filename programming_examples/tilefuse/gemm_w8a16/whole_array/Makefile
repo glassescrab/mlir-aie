@@ -1,0 +1,52 @@
+##===- Makefile -----------------------------------------------------------===##
+# 
+# This file licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# 
+##===----------------------------------------------------------------------===##
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+subdir=whole_array
+targetname=whole_array
+
+
+# M, K, N: final GEMM dimensions
+M?=4096
+K?=4096
+N?=4096
+
+# m, k, n: single AIE core GEMM dimensions
+m?=64
+k?=128
+n?=64
+
+n_aie_cols?=8
+b_col_maj?=0
+
+kernels=mix_${m}x${k}x${n}
+aieargs+=-m $m -k $k -n $n --n-aie-cols ${n_aie_cols} --b-col-maj ${b_col_maj}
+runargs+=--b_col_maj ${b_col_maj}
+target_suffix=${M}x${K}x${N}_${m}x${k}x${n}_${n_aie_cols}c
+
+# set this flag to 1 for linear buffer allocation
+# else, 0 for bank-aware
+use_linear_buf_alloc?=1
+
+ifeq (${use_linear_buf_alloc}, 1)
+buffer_aloc_flag=basic-sequential
+else
+buffer_aloc_flag=bank-aware
+endif
+
+KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+ifeq (${b_col_maj}, 1)
+	KERNEL_DEFINES+=-DB_COL_MAJ
+endif
+
+include ${srcdir}/../makefile-common
+
+build/mix_${m}x${k}x${n}.o: ${kernels_dir}/mix_int8_ATB.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}

@@ -18,6 +18,11 @@ Each IRON example has one or more implementations:
 
 They are organized into the following directories:
 
+## [tilefuse](./tilefuse)
+
+Fused mixed-precision (`W4A16` / `W8A16`) GEMM and GEMV designs for XDNA2, and the
+ablation study for the TileFuse paper. See [tilefuse/README.md](./tilefuse/README.md).
+
 ## [basic](./basic) 
 
 Basic building blocks to understand the NPU architecture and first steps towards building applications for the NPU in Ryzen™ AI. 

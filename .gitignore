@@ -16,6 +16,9 @@ include/**/Makefile
 lib/**/Makefile
 *.csv
 
+# xdna-driver is installed from its own repository (see README), not vendored here
+/xdna-driver/
+
 /platforms/vck190_bare/petalinux/build
 /platforms/vck190_bare/petalinux/components
 /platforms/vck190_bare/petalinux/images

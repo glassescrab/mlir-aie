@@ -13,12 +13,11 @@ targetname=matrix_vector
 
 # Currently does not accept reconfiguring size via these variables; must change
 # in source at <targetname>.py as well as here
-M?=8192
-K?=8192
-N?=1
-m?=64
-k?=64
-
+M=288
+K=288
+N=1
+m=32
+k=32
 
 kernels=mv_${m}x${k}
 use_placed?=0

@@ -1,10 +1,11 @@
-//===- mv.cc ----------------------------------------------000---*- C++ -*-===//
+//===- vm_mix_int8_r16.cc ---------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2025, University of Illinois Urbana-Champaign.
 //
 //===----------------------------------------------------------------------===//
 
@@ -68,13 +69,15 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
   
   // Optimized preprocessing: use chess hints for better pipelining
   for (unsigned i = 0; i < colA; ++i) chess_prepare_for_pipelining chess_loop_range(8, ) {
-    // Load scale factors once per row tile (reuse across columns)
-    const aie::vector<T_in_B, 16> Bs_row = aie::load_v<16>(pBs_b + i * 16);
-    const aie::vector<T_in_A, 8> Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
-    const aie::vector<T_in_A, size_B> Bs_replicated = 
-      aie::transpose(Bs_row_cast.template grow_replicate<size_B>(), 8, 8);
-    
     for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {
+      // Load per-output-channel scale factors, indexed by j (the column tile)
+      // so the scale varies along the output-channel (n) axis. Hoisting this
+      // out of the j loop was only valid under per-reduction-row scaling.
+      const aie::vector<T_in_B, 16> Bs_row = aie::load_v<16>(pBs_b + j * 16);
+      const aie::vector<T_in_A, 8> Bs_row_cast = aie::vector_cast<T_in_A>(Bs_row);
+      const aie::vector<T_in_A, size_B> Bs_replicated =
+        Bs_row_cast.template grow_replicate<size_B>();
+
       const aie::vector<T_in_B, size_B> B_quantized = 
         aie::load_v<size_B>(pB_quantized + (i * colB + j) * size_B);
       

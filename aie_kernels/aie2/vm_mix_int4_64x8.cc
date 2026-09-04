@@ -1,10 +1,11 @@
-//===- mv.cc ----------------------------------------------000---*- C++ -*-===//
+//===- vm_mix_int4_64x8.cc --------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2025, University of Illinois Urbana-Champaign.
 //
 //===----------------------------------------------------------------------===//
 
@@ -187,11 +188,6 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
 
   // T_out *__restrict c_ptr = c;
 
-  // AIE_LOOP_MIN_ITERATION_COUNT(n / r)
-  // for (int col = 0; col < n; col += r) {
-  //   // Initialize accumulator with current values for this block of r columns
-  //   aie::accum<T_acc, r> c_acc;
-  //   c_acc.from_vector(aie::load_v<r>(c_ptr));
     
   //   T_in_A *__restrict a_ptr = a;
   //   T_in_A *__restrict b_ptr = b_buf + col * s;
@@ -214,22 +210,10 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
   //       c_acc, a_vec, 0, b_vec_0, b_vec_1, b_vec_2, b_vec_3, 
   //       b_vec_4, b_vec_5, b_vec_6, b_vec_7);
 
-  //     b_ptr += n * s;
-  //     a_ptr += s;
-  //   }
     
-  //   // After accumulating over all k, convert to output type and store
-  //   aie::store_v(c_ptr, c_acc.template to_vector<T_out>());
-  //   c_ptr += r; // Move to next r columns of output
-  // }
 
   // T_out *__restrict c_ptr = c;
 
-  // AIE_LOOP_MIN_ITERATION_COUNT(n / half_r)
-  // for (int col = 0; col < n; col += half_r) {
-  //   // Initialize accumulator with current values for this block of r columns
-  //   aie::accum<T_acc, half_r> c_acc;
-  //   c_acc.from_vector(aie::load_v<half_r>(c_ptr));
     
   //   T_in_A *__restrict a_ptr = a;
   //   T_in_A *__restrict b_ptr = b_buf + col * s;
@@ -252,14 +236,7 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
   //       c_acc, a_vec, 0, b_vec_0, b_vec_1, b_vec_2, b_vec_3, 
   //       b_vec_4, b_vec_5, b_vec_6, b_vec_7);
 
-  //     b_ptr += n * s;
-  //     a_ptr += s;
-  //   }
     
-  //   // After accumulating over all k, convert to output type and store
-  //   aie::store_v(c_ptr, c_acc.template to_vector<T_out>());
-  //   c_ptr += half_r; // Move to next r columns of output
-  // }
 
   event1();
 }

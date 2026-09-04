@@ -1,10 +1,11 @@
-//===- mm.cc ----------------------------------------------000---*- C++ -*-===//
+//===- mix_int4_ATB.cc ------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025, University of Illinois Urbana-Champaign.
 //
 //===----------------------------------------------------------------------===//
 
@@ -87,17 +88,16 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
   if (g_counter == 0) {
     const T_in_B *__restrict pB_quantized = pB;
 
-    const T_in_B *__restrict pBs_b = pB + colA * colB / 2 * MMUL::size_B;
-    // Scales = 128 bytes. Zeros follow Scales. Use + 128.
-    // 64 scales (128 bytes). + 128 bytes.
-    // Wait. colA * s * 2 = 128 * 2 = 256. 
-    // We want 128 bytes offset.
-    // Use hardcoded 128 (64*2) since test.cpp uses 64 columns.
-    // Or better: Use (colB * 8? No) ...
-    // Just use + 128 (bytes).
-    // Or (colA * s) is 128. times 1 (byte).
-    // so + colA * s * 1.
-    const T_in_B *__restrict pBzp_b = pB + colA * colB / 2 * MMUL::size_B + 128; 
+    // Tile layout, as emitted by the host-side pre-tiling in test.cpp:
+    //   [ packed INT4 weights | BF16 scales | INT8 zero-points ]
+    // The weight region holds two INT4 values per byte. It is followed by one
+    // BF16 scale per output column and then one INT8 zero-point per output
+    // column, so the zero-points begin colB * t * sizeof(bfloat16) bytes after
+    // the scales.
+    constexpr unsigned weights_bytes = colA * colB / 2 * MMUL::size_B;
+    constexpr unsigned scales_bytes = colB * t * sizeof(bfloat16);
+    const T_in_B *__restrict pBs_b = pB + weights_bytes;
+    const T_in_B *__restrict pBzp_b = pB + weights_bytes + scales_bytes;
 
     for (unsigned i = 0; i < colA; ++i) chess_prepare_for_pipelining chess_loop_range(4, ) {
       for (unsigned j = 0; j < colB; ++j) chess_flatten_loop {

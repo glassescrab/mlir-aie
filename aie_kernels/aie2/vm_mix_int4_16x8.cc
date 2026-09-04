@@ -1,10 +1,11 @@
-//===- mv.cc ----------------------------------------------000---*- C++ -*-===//
+//===- vm_mix_int4_16x8.cc --------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2025, University of Illinois Urbana-Champaign.
 //
 //===----------------------------------------------------------------------===//
 
@@ -93,11 +94,6 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
 
   // T_out *__restrict c_ptr = c;
 
-  // AIE_LOOP_MIN_ITERATION_COUNT(n / four_r)
-  // for (int col = 0; col < n; col += four_r) {
-  //   // Initialize accumulator with current values for this block of r columns
-  //   aie::accum<T_acc, four_r> c_acc;
-  //   c_acc.from_vector(aie::load_v<four_r>(c_ptr));
     
   //   T_in_A *__restrict a_ptr = a;
   //   T_in_A *__restrict b_ptr = b_buf + col * s;
@@ -106,84 +102,12 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
   //   for (int row = 0; row < k; row += s) chess_prepare_for_pipelining chess_loop_range(8, ) {
   //     const aie::vector<T_in_A, s> a_vec = aie::load_v<s>(a_ptr);
       
-  //     // Load from pre-dequantized buffer - two 8×8 tiles to form 8×16
-  //     const aie::vector<T_in_A, four_r> b_vec_0 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 0 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 0 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 0 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 0 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 0 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 0 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 0 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 0 * half_r));
-  //     const aie::vector<T_in_A, four_r> b_vec_1 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 1 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 1 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 1 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 1 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 1 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 1 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 1 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 1 * half_r));
-  //     const aie::vector<T_in_A, four_r> b_vec_2 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 2 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 2 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 2 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 2 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 2 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 2 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 2 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 2 * half_r));
-  //     const aie::vector<T_in_A, four_r> b_vec_3 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 3 * half_r), 
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 3 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 3 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 3 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 3 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 3 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 3 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 3 * half_r));
-  //     const aie::vector<T_in_A, four_r> b_vec_4 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 4 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 4 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 4 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 4 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 4 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 4 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 4 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 4 * half_r));
-  //     const aie::vector<T_in_A, four_r> b_vec_5 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 5 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 5 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 5 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 5 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 5 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 5 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 5 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 5 * half_r));
-  //     const aie::vector<T_in_A, four_r> b_vec_6 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 6 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 6 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 6 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 6 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 6 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 6 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 6 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 6 * half_r));
-  //     const aie::vector<T_in_A, four_r> b_vec_7 = aie::concat(aie::load_v<half_r>(b_ptr + 0 * s * half_r + 7 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 1 * s * half_r + 7 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 2 * s * half_r + 7 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 3 * s * half_r + 7 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 4 * s * half_r + 7 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 5 * s * half_r + 7 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 6 * s * half_r + 7 * half_r),
-  //                                                             aie::load_v<half_r>(b_ptr + 7 * s * half_r + 7 * half_r));
 
   //     c_acc = aie::accumulate<four_r>(
   //       c_acc, a_vec, 0, b_vec_0, b_vec_1, b_vec_2, b_vec_3, 
   //       b_vec_4, b_vec_5, b_vec_6, b_vec_7);
 
-  //     b_ptr += n * s;
-  //     a_ptr += s;
-  //   }
     
-  //   // After accumulating over all k, convert to output type and store
-  //   aie::store_v(c_ptr, c_acc.template to_vector<T_out>());
-  //   c_ptr += four_r; // Move to next r columns of output
-  // }
 
   T_out *__restrict c_ptr = c;
 
@@ -225,11 +149,6 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
 
   // T_out *__restrict c_ptr = c;
 
-  // AIE_LOOP_MIN_ITERATION_COUNT(n / half_r)
-  // for (int col = 0; col < n; col += half_r) {
-  //   // Initialize accumulator with current values for this block of r columns
-  //   aie::accum<T_acc, half_r> c_acc;
-  //   c_acc.from_vector(aie::load_v<half_r>(c_ptr));
     
   //   T_in_A *__restrict a_ptr = a;
   //   T_in_A *__restrict b_ptr = b_buf + col * s;
@@ -252,14 +171,7 @@ void vecmat_vectorized(T_in_A *__restrict a, T_in_B *__restrict b,
   //       c_acc, a_vec, 0, b_vec_0, b_vec_1, b_vec_2, b_vec_3, 
   //       b_vec_4, b_vec_5, b_vec_6, b_vec_7);
 
-  //     b_ptr += n * s;
-  //     a_ptr += s;
-  //   }
     
-  //   // After accumulating over all k, convert to output type and store
-  //   aie::store_v(c_ptr, c_acc.template to_vector<T_out>());
-  //   c_ptr += half_r; // Move to next r columns of output
-  // }
 
   event1();
 }

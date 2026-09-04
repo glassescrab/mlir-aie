@@ -1,10 +1,11 @@
-//===- mm.cc ----------------------------------------------000---*- C++ -*-===//
+//===- mix_int8_ATB.cc ------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025, University of Illinois Urbana-Champaign.
 //
 //===----------------------------------------------------------------------===//
 
@@ -99,10 +100,14 @@ static inline void matmul_vectorized_2x2_mmul(const T_in_A *__restrict pA,
           B_quantized = aie::transpose(aie::load_v<MMUL::size_B>(pB_quantized + (j * colA + i) * MMUL::size_B), t, s);
         }
         
-        // Load scaling factors
+        // Load per-output-channel scale factors. Indexed by j (the N/colB
+        // sub-tile index), so the scale varies along the output-channel axis.
         const bfloat16 *pBs_bf16 = reinterpret_cast<const bfloat16*>(pBs_b);
-        aie::vector<bfloat16, 8> Bs_row_bf16 = aie::load_v<8>(pBs_bf16 + i * 8);
-        aie::vector<bfloat16, MMUL::size_B> Bs = aie::transpose(Bs_row_bf16.template grow_replicate<MMUL::size_B>(), t, s);
+        aie::vector<bfloat16, 8> Bs_row_bf16 = aie::load_v<8>(pBs_bf16 + j * 8);
+        // grow_replicate lays scale c at tile index r*t + c, i.e. varying along
+        // the column (N) axis. No transpose: transposing would flip it to the
+        // reduction (K) axis, which is not per-output-channel quantization.
+        aie::vector<bfloat16, MMUL::size_B> Bs = Bs_row_bf16.template grow_replicate<MMUL::size_B>();
         
         // Dequantize: cast int8 to bf16 and apply scaling
         aie::vector<bfloat16, MMUL::size_B> B_dequantized = aie::to_float<T_in_A>(B_quantized);
