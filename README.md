@@ -17,9 +17,10 @@
 This is a fork of [MLIR-AIE](https://github.com/Xilinx/mlir-aie) containing the
 artifact for:
 
-> **TileFuse: A Fused Mixed-Precision Kernel Library for Efficient Quantized LLM
-> Inference on AMD NPU.** Wesley Pang\*, Gregory Hyegang Jun\*, Feiyang Liu,
-> Deming Chen. ICCAD '26. <https://doi.org/10.1145/3831252.3834036>
+> **TileFuse: A Fused Mixed-Precision Kernel Library for Efficient Quantized LLM Inference on AMD NPUs.**  
+> Wesley Pang, Gregory Hyegang Jun, Feiyang Liu, and Deming Chen.  
+> *Proceedings of IEEE/ACM International Conference on Computer-Aided Design (ICCAD)*, November 2026.  
+> arXiv version available here: [https://arxiv.org/abs/2606.11357](https://arxiv.org/abs/2606.11357)
 
 TileFuse brings AWQ-style `W4A16` and `W8A16` weights directly onto AMD XDNA2
 NPUs, fusing unpacking, dequantization and GEMM/GEMV into a single kernel pass.

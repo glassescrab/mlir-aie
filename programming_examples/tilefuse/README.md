@@ -5,9 +5,10 @@ MLIR-AIE (IRON) flow. TileFuse consumes AWQ-style `W4A16` and LLM.int8-style
 `W8A16` weights directly on the NPU, fusing unpacking, dequantization and
 GEMM/GEMV into a single kernel pass.
 
-> **TileFuse: A Fused Mixed-Precision Kernel Library for Efficient Quantized
-> LLM Inference on AMD NPU.** Wesley Pang\*, Gregory Hyegang Jun\*, Feiyang Liu,
-> Deming Chen. ICCAD '26. <https://doi.org/10.1145/3831252.3834036>
+> **TileFuse: A Fused Mixed-Precision Kernel Library for Efficient Quantized LLM Inference on AMD NPUs.**  
+> Wesley Pang, Gregory Hyegang Jun, Feiyang Liu, and Deming Chen.  
+> *Proceedings of IEEE/ACM International Conference on Computer-Aided Design (ICCAD)*, November 2026.  
+> arXiv version available here: [https://arxiv.org/abs/2606.11357](https://arxiv.org/abs/2606.11357)
 
 This directory is the artifact for that paper. Everything outside it is
 unmodified upstream [MLIR-AIE](https://github.com/Xilinx/mlir-aie), except for
