@@ -25,7 +25,7 @@ TileFuse brings AWQ-style `W4A16` and `W8A16` weights directly onto AMD XDNA2
 NPUs, fusing unpacking, dequantization and GEMM/GEMV into a single kernel pass.
 
 **Start here: [`programming_examples/tilefuse/`](./programming_examples/tilefuse)**
-— designs, build instructions and the paper-to-code map. The mixed-precision
+— the dataflow and host code for the mixed-precision kernels. The mixed-precision
 microkernels live in [`aie_kernels/aie2p/`](./aie_kernels/aie2p) (GEMM) and
 [`aie_kernels/aie2/`](./aie_kernels/aie2) (GEMV). Everything else in this
 repository is unmodified upstream MLIR-AIE; the rest of this README is upstream's.
